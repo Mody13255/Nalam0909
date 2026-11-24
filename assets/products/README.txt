@@ -1,7 +1,7 @@
 NALAM (نالام) — Product Photos Folder
 =====================================
 
-Add real product photography to this folder using the filenames defined in js/products.js:
+Drop your real product photos into this folder using the filenames defined in js/products.js:
 
 1. Bed:           bed-aura-1.jpg, bed-aura-2.jpg, bed-aura-3.jpg, bed-aura-4.jpg
 2. Dressing:      dressing-lumiere-1.jpg ... -4.jpg
@@ -13,6 +13,6 @@ Add real product photography to this folder using the filenames defined in js/pr
 8. Shoe Cabinets: shoe-cabinets-atelier-1.jpg ... -4.jpg
 9. WC Units:      wc-units-spa-1.jpg ... -4.jpg
 
-Until real photos are uploaded, the storefront shows branded atelier artwork for each image, labelled with the category, product code and viewing angle. Images load lazily, and any photo that becomes available is picked up automatically without a broken-image icon.
+Until real photos are added, the site automatically displays warm luxury architectural placeholder cards showing each angle name and filename so no broken image icons appear.
 
-To add more items or update EGP prices, delivery rules and your InstaPay handle, edit js/products.js directly.
+To add more items or update EGP prices and your InstaPay handle, edit js/products.js directly.

@@ -1,2780 +1,2123 @@
 /* ==========================================================================
-   NALAM — Storefront interactions
-   Cart, wishlist, accounts, checkout, catalogue, language and motion
+   NALAM — Production Interactive, Auth, Payment & Account Hub Engine
+   - Side-by-Side 6-Stage Scroll Kitchen Assembly
+   - EN / AR RTL Switcher
+   - Split First/Last Name (EN/AR/EU/TR letters only, zero symbols)
+   - Email Verification Check & Required Terms & Services Modal
+   - Guest & Account Cart/Wishlist + 4-Option Floor Delivery Engine
+   - Dedicated Payment Hub (InstaPay / Wallet Details, Progress, Admin Chat)
+   - Dedicated Account Hub (Avatar Upload & Full Profile Editing)
+   - Meta Pixel & Silent Google Sheet Lead/Order Capture Hook
    ========================================================================== */
 
 (function () {
   'use strict';
 
-  var CFG = window.NALAM_CONFIG || {};
-  var PRODUCTS = Array.isArray(window.NALAM_PRODUCTS) ? window.NALAM_PRODUCTS : [];
-  var CATEGORIES = Array.isArray(window.NALAM_CATEGORIES) ? window.NALAM_CATEGORIES : [];
-  var PRODUCT_MAP = new Map(PRODUCTS.map(function (p) { return [p.id, p]; }));
-  var CATEGORY_MAP = new Map(CATEGORIES.map(function (c) { return [c.id, c]; }));
+  const CONFIG = window.NALAM_CONFIG || {};
+  const CATEGORIES = window.NALAM_CATEGORIES || [];
+  const PRODUCTS = window.NALAM_PRODUCTS || [];
+  const GOOGLE_SHEET_WEBHOOK_URL = CONFIG.googleSheetWebhookUrl || '';
+  const DEFAULT_FALLBACK_IMG = 'assets/logo.png';
 
-  var STORE_KEYS = {
-    lang: 'nalam.lang.v3',
-    cart: 'nalam.cart.v3',
-    wishlist: 'nalam.wishlist.v3',
-    accounts: 'nalam.accounts.v3',
-    session: 'nalam.session.v3'
-  };
+  /* Letters-only regex: English, Arabic, European & Turkish Unicode letters + spaces (no digits/symbols) */
+  const LETTERS_ONLY_RE = /^[\p{L}\s]+$/u;
+  const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
-  var PHOTO_CACHE = new Map();
-  var MAX_QTY = 20;
-  var REDUCED_MOTION = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-
-  var state = {
-    lang: 'en',
-    cart: [],
-    wishlist: [],
-    accounts: [],
-    sessionId: '',
-    pendingCheckout: false,
-    activeCategory: 'all',
-    currentProductId: '',
-    modalQty: 1,
-    authMode: 'signin',
-    lastFocus: null,
-    heroStage: -1,
-    processStage: -1,
-    lastOrder: null
-  };
-
-  var refs = {};
-
-  /* ------------------------------------------------------------------------
-     Language
-     ------------------------------------------------------------------------ */
-
-  var AR = {
-    page_title: 'نالام — مطابخ ودريسينج روم وأثاث فاخر حسب الطلب | القاهرة الجديدة',
-    nav_showcase: 'المعرض',
-    nav_stages: 'مراحل التنفيذ',
-    nav_catalogue: 'الكاتالوج',
-    nav_materials: 'الخامات والإكسسوارات',
-    nav_contact: 'اتصل بنا',
-    nav_wa: 'واتساب',
-    nav_wishlist: 'المفضلة',
-    nav_delivery: 'وعد التوصيل',
-    lang_btn: 'English',
-    announcement_text: '<strong>5,000 جنيه مصري فقط</strong> للتوصيل والتركيب الاحترافي في القاهرة والجيزة.',
-    announcement_link: 'تفاصيل وعد التوصيل',
-    hero_eyebrow: 'معرض القاهرة الجديدة المعماري',
-    hero_title_1: 'شاهد المساحة',
-    hero_title_em: 'تنبض بالحياة',
-    hero_lead: 'من مساحة فارغة إلى مطبخ لا ترغب في مغادرته. تابع ست مراحل من تنفيذ نالام، ثم ادخل إلى الكاتالوج.',
-    hero_stage_0_title: 'اللوحة الفارغة',
-    hero_stage_0_desc: 'كل مشروع نالام يبدأ من فراغك، يُقاس بالمليمتر قبل أن يُرسم أي خط.',
-    hero_stage_1_title: 'القاعدة تتشكّل',
-    hero_stage_1_desc: 'تُجهّز الوحدات السفلية المقاومة للرطوبة وتُضبط وتُستوى بدقة مع حدود الغرفة.',
-    hero_stage_2_title: 'معمارية بارتفاع كامل',
-    hero_stage_2_desc: 'الأبراج ووحدات التخزين الممتدة من الأرض للسقف تصنع جداراً متناسقاً يعمل بقدر ما يبدو جميلاً.',
-    hero_stage_3_title: 'الوحدات العلوية',
-    hero_stage_3_desc: 'تضيف الوحدات العلوية وإضاءة الليد الدافئة عمقاً وطبقات من الضوء تماماً كما اعتمدت في التصميم ثلاثي الأبعاد.',
-    hero_stage_4_title: 'تركيب الأجهزة',
-    hero_stage_4_desc: 'تُركّب الأجهزة المدمجة والحوض والإكسسوارات بدقة ملليمترية وتُختبر داخل الموقع.',
-    hero_stage_5_title: 'اللحظة الأخيرة',
-    hero_stage_5_desc: 'أخضر سيج مطفي وكوارتز معرق وإضاءة دافئة تجتمع معاً — مطبخ نالام مكتمل وجاهز للسكن.',
-    hero_cta_cat: 'استكشف الكاتالوج',
-    hero_cta_book: 'احجز زيارة للمعرض',
-    hero_chip_1: 'ضمان 5 سنوات',
-    hero_chip_2: 'توصيل ثابت 5,000 جنيه',
-    hero_chip_3: 'إنستاباي والمحفظة الإلكترونية',
-    stage_live: 'تصميم 3D مباشر',
-    stage_location: 'القاهرة الجديدة',
-    stage_caption_kicker: 'بناء نالام',
-    hero_scroll_cue: 'مرّر لتكتمل تفاصيل المطبخ',
-    trust_1_title: 'ضمان 5 سنوات',
-    trust_1_sub: 'تغطية كاملة للهيكل والإكسسوارات',
-    trust_2_title: 'توصيل ثابت 5,000 جنيه',
-    trust_2_sub: 'القاهرة والجيزة، والتركيب مشمول',
-    trust_3_title: 'إنستاباي والمحفظة',
-    trust_3_sub: 'دفع بسيط دون بطاقات',
-    trust_4_title: 'تصميم 3D مخصص',
-    trust_4_sub: 'شاهد النتيجة قبل التنفيذ',
-    process_eyebrow: 'رحلة نالام',
-    process_title: 'من أول رسم إلى <em>اللحظة الأخيرة.</em>',
-    process_lead: 'كل مشروع يتبع نفس الانضباط الهادئ: نستمع بدقة، نرسم بدقة، ننفذ بصدق، ونركّب بعناية. تابع مشروعاً من الورشة إلى الغرفة.',
-    process_badge: 'داخل الأتيليه',
-    process_step_1_num: 'الخطوة 01 — التصميم',
-    process_step_1_title: 'قياس ونمذجة واعتماد.',
-    process_step_1_desc: 'نزور مساحتك ونسجل كل ملليمتر ونحوّل طريقة حياتك إلى تصميم ثلاثي الأبعاد كامل. ترى التخزين والإضاءة والتفاصيل قبل أن يُقطع أي لوح.',
-    process_tag_1a: 'زيارة وقياس',
-    process_tag_1b: 'تصميم ثلاثي الأبعاد',
-    process_tag_1c: 'تعديلات غير محدودة',
-    process_step_2_num: 'الخطوة 02 — الخامات',
-    process_step_2_title: 'ألواح مختارة لطريقة حياتك.',
-    process_step_2_desc: 'علب المطابخ تحصل على كونتر مقاوم للرطوبة، والحمامات على بورديوم مقاوم للمياه 100%. تلمس كل تشطيب وحرف ومقبض في المعرض قبل الاعتماد.',
-    process_tag_2a: 'كونتر 16 مم',
-    process_tag_2b: 'بورديوم للمناطق الرطبة',
-    process_tag_2c: 'SAMET وFGV',
-    process_step_3_num: 'الخطوة 03 — التنفيذ',
-    process_step_3_title: 'قص وتقفيل وتجميع داخلي.',
-    process_step_3_desc: 'تقص ورشتنا وتقفّل وتجمّع كل وحدة بأقل فراغات ممكنة، مع تجربة الإكسسوارات جافة. كل درج ومفصلة يُختبر قبل مغادرة طاولة العمل.',
-    process_tag_3a: 'تقفيل دقيق',
-    process_tag_3b: 'تجميع تجريبي',
-    process_tag_3c: 'اختبار الإكسسوارات',
-    process_step_4_num: 'الخطوة 04 — التركيب',
-    process_step_4_title: 'توصيل وتركيب وكشف.',
-    process_step_4_desc: 'يحمي فريق التركيب أرضياتك ويضبط كل خط ويُنهي الإضاءة والإكسسوارات في الموقع. نسلّم غرفة نظيفة ودليل عناية وضماناً لخمس سنوات.',
-    process_tag_4a: 'تركيب احترافي',
-    process_tag_4b: 'تنظيف الموقع',
-    process_tag_4c: 'ضمان 5 سنوات',
-    process_caption_0_title: 'التصميم والمعاينة 3D',
-    process_caption_0_sub: 'المرحلة 01 — قياس ونمذجة واعتماد',
-    process_caption_1_title: 'اختيار الخامات',
-    process_caption_1_sub: 'المرحلة 02 — تشطيبات وإكسسوارات',
-    process_caption_2_title: 'التنفيذ في الورشة',
-    process_caption_2_sub: 'المرحلة 03 — قص وتجميع واختبار',
-    process_caption_3_title: 'التسليم والتركيب',
-    process_caption_3_sub: 'المرحلة 04 — تركيب وضمان',
-    spotlight_eyebrow: 'تجوّل في الغرفة',
-    spotlight_title: 'شاهد التشطيب وهو يتحرك.',
-    spotlight_quote: '«المطبخ يجب أن يبدو هادئاً قبل أن يبدو مبهراً. نصمم الضوء والوصول والإيقاع أولاً، ثم نختار الحجر.»',
-    spotlight_credit: '— استوديو تصميم نالام، القاهرة الجديدة',
-    catalogue_eyebrow: 'المجموعة',
-    catalogue_title: 'قطع صُنعت <em>لأن تُعاش.</em>',
-    catalogue_lead: 'نقطة بداية مدروسة، وليست حداً. كل قطعة تُصنع حسب الطلب ويمكن تعديل مقاسها أو تشطيبها أو إعادة تصورها لغرفتك. الأسعار تشمل التركيب الاحترافي في القاهرة والجيزة.',
-    catalogue_note: 'قطعة · تُصنع حسب الطلب',
-    catalogue_foot_1: 'كل قطعة تُصنع حسب الطلب',
-    catalogue_foot_2: 'مقاسات وتشطيبات مخصصة',
-    catalogue_foot_3: 'توصيل ثابت 5,000 جنيه',
-    catalogue_foot_4: 'ضمان 5 سنوات',
-    materials_eyebrow: 'الخامات والإكسسوارات',
-    materials_title: 'الأجزاء التي <em>لا تراها.</em>',
-    materials_lead: 'الباب الجميل سهل. أما الخزانة التي تبقى صامتة ومستقيمة وناعمة بعد عشر سنوات فهي الحرفة الحقيقية. هذا ما يقف خلف كل تشطيب نالام.',
-    material_1_scope: 'غرف النوم والدريسينج',
-    material_1_title: 'كونتر 16 مم مقاوم للتقوس',
-    material_1_desc: 'كونتر مكسو بالميلامين بهيكل مستقر وأقل فراغات ممكنة، لتبقى خطوط الدولاب الطويلة مستقيمة والأبواب محاذية دائماً.',
-    material_2_scope: 'المطابخ',
-    material_2_title: 'علب مطابخ مقاومة للرطوبة',
-    material_2_desc: 'كونتر جود وود وتوب وود ساندويتش مع وحدة حوض بورديوم مقاومة للمياه 100%، مصممة للبخار والانسكابات والغسيل اليومي.',
-    material_3_scope: 'المناطق الرطبة',
-    material_3_title: 'بورديوم مقاوم للمياه 100%',
-    material_3_desc: 'قلب مخصص للحمامات يقاوم الرطوبة والرشاش، مع أسطح كوارتز وإكسسوارات محمية من الرطوبة.',
-    material_4_scope: 'الإكسسوارات',
-    material_4_title: 'SAMET التركي وFGV الإيطالي',
-    material_4_desc: 'مفصلات سوفت كلوز ومجرات سفلية مختارة لحركة ناعمة وعمر خدمة طويل، تُختبر قطعة بقطعة قبل التركيب.',
-    material_5_scope: 'الإضاءة',
-    material_5_title: 'بروفايلات ليد دافئة مدمجة',
-    material_5_desc: 'بروفايلات مخفية وقابلة للتعتيم تغمر أسطح العمل ودواخل الدولاب بضوء ناعم دون وهج أو قطع ظاهرة.',
-    warranty_1_title: 'ضمان 5 سنوات',
-    warranty_1_sub: 'تغطية الهيكل والإكسسوارات',
-    warranty_2_title: 'تركيب احترافي',
-    warranty_2_sub: 'مشمول مع كل طلب في القاهرة والجيزة',
-    warranty_3_title: 'عناية بعد البيع',
-    warranty_3_sub: 'ضبط وقطع غيار وزيارات صيانة عند الطلب',
-    delivery_eyebrow: 'وعد التوصيل',
-    delivery_title: 'سعر واحد ثابت. <em>دون مفاجآت.</em>',
-    delivery_note: 'التوصيل والتركيب الاحترافي بسعر ثابت 5,000 جنيه مصري في أي مكان بالقاهرة والجيزة (حتى الدور الثاني) ينطبق على أي حجم طلب، سواء قطعة واحدة أو غرف كاملة.',
-    delivery_bullet_1: 'نفس رسوم 5,000 جنيه مصري سواء طلبت كومود واحداً أو منزلاً كاملاً.',
-    delivery_bullet_2: 'التركيب الاحترافي والضبط وضبط الإكسسوارات مشمولة.',
-    delivery_bullet_3: 'رقم الدور مطلوب للتنظيم اللوجستي فقط — وليس لرسوم إضافية.',
-    delivery_bullet_4: 'الدفع عبر إنستاباي أو المحفظة الإلكترونية، ويؤكده فريقنا على واتساب.',
-    delivery_cta: 'ابدأ طلبك',
-    delivery_card_label: 'توصيل بسعر ثابت',
-    delivery_card_badge: 'القاهرة والجيزة',
-    delivery_card_sub: 'التركيب الاحترافي مشمول · حتى الدور الثاني',
-    delivery_card_row_1: 'التوصيل والتركيب',
-    delivery_card_row_1_val: '5,000 جنيه',
-    delivery_card_row_2: 'رسوم إضافية للدور',
-    delivery_card_row_2_val: '0 جنيه',
-    delivery_card_row_3: 'حد لحجم الطلب',
-    delivery_card_row_3_val: 'لا يوجد',
-    delivery_badge_strong: 'توصيل بسعر ثابت:',
-    delivery_badge_text: 'نفس رسوم 5,000 جنيه مصري سواء طلبت قطعة واحدة أو غرفة كاملة.',
-    faq_eyebrow: 'معلومات مفيدة',
-    faq_title: 'أسئلة، <em>وأجوبة.</em>',
-    faq_lead: 'كل ما تحتاجه قبل الطلب. إذا لم تجد سؤالك، يرد فريقنا على واتساب خلال ساعات المعرض.',
-    faq_contact_label: 'ما زلت تفكر؟',
-    faq_contact_link: 'تحدث إلى مصمم',
-    faq_q1: 'كيف يعمل التوصيل الثابت بـ 5,000 جنيه؟',
-    faq_a1: 'رسوم ثابتة واحدة 5,000 جنيه مصري تغطي التوصيل والتركيب الاحترافي في أي مكان بالقاهرة والجيزة حتى الدور الثاني. نفس الرسوم تنطبق سواء كان طلبك كومود واحداً أو غرفة كاملة. لا توجد رسوم إضافية للدور؛ نطلب رقم الدور فقط ليصل فريق التركيب مستعداً.',
-    faq_q2: 'هل يمكنني الطلب دون إنشاء حساب؟',
-    faq_a2: 'نعم. يمكنك إضافة القطع إلى السلة وحفظ المفضلة دون تسجيل دخول. الحساب مطلوب فقط عند تأكيد الطلب، حتى نحفظ تاريخ طلباتك وبيانات التوصيل وسجل الضمان في مكان واحد. إذا سجلت الدخول عند الدفع، تعود سلتك كما تركتها.',
-    faq_q3: 'كيف أدفع عبر إنستاباي أو المحفظة؟',
-    faq_a3: 'اختر إنستاباي أو المحفظة الإلكترونية في السلة، أكّد طلبك، وسنرسل ملخصاً ثنائي اللغة على واتساب. يرد فريقنا ببيانات الدفع ويؤكد موعد التصنيع. لا نجمع بيانات البطاقات على هذا الموقع.',
-    faq_q4: 'هل أسعار الكاتالوج نهائية؟',
-    faq_a4: 'أسعار الكاتالوج نقطة بداية شفافة للمقاس والتشطيب المذكورين، وتشمل التركيب. قد تغيّر المقاسات المخصصة أو الأحجار الفاخرة أو الوحدات الإضافية السعر النهائي. نؤكد كل تفصيلة كتابةً قبل بدء التصنيع.',
-    faq_q5: 'ماذا يغطي ضمان الخمس سنوات؟',
-    faq_a5: 'يغطي الضمان الهيكل والإكسسوارات الموردة تحت الاستخدام المنزلي الطبيعي، ويشمل ضبط المفصلات والمجرات وعيوب التصنيع والثبات الإنشائي. لا يغطي التلف العرضي أو أضرار المياه من مصادر خارجية أو التآكل الطبيعي للأقمشة.',
-    faq_q6: 'هل يمكنني زيارة المعرض قبل الطلب؟',
-    faq_a6: 'يسعدنا ذلك. معرض القاهرة الجديدة مفتوح يومياً من 11:00 صباحاً حتى 10:00 مساءً. اتصل أو راسلنا لحجز استشارة، وأحضر مقاسات الغرفة أو المخطط إن أمكن.',
-    contact_eyebrow: 'زيارة أو حديث',
-    contact_title: 'لنصمم <em>مساحتك.</em>',
-    contact_lead: 'احجز استشارة في المعرض، أرسل مخططك، أو أخبرنا بما تحلم به. سيرد مصمم بالخطوة العملية التالية.',
-    showroom_title: 'معرض القاهرة الجديدة',
-    showroom_open: 'مفتوح يومياً',
-    showroom_address_label: 'العنوان',
-    showroom_address: 'معرض نالام، التجمع الخامس، القاهرة الجديدة، مصر',
-    showroom_phone_label: 'الهاتف وواتساب',
-    showroom_hours_label: 'ساعات المعرض',
-    showroom_hours: 'يومياً: 11:00 صباحاً – 10:00 مساءً (المعرض والاستشارات)',
-    showroom_orders_label: 'الطلبات والتوصيل',
-    showroom_orders: 'توصيل ثابت 5,000 جنيه في القاهرة والجيزة، والتركيب مشمول',
-    showroom_map_cta: 'افتح في خرائط جوجل',
-    contact_form_title: 'اطلب استشارة',
-    contact_form_sub: 'أخبرنا قليلاً عن الغرفة. نرد على واتساب خلال ساعات المعرض.',
-    form_name: 'الاسم الكامل',
-    form_phone: 'رقم الهاتف',
-    form_governorate: 'المحافظة',
-    form_select: 'اختر…',
-    gov_cairo: 'القاهرة',
-    gov_giza: 'الجيزة',
-    form_interest: 'مهتم بـ',
-    interest_kitchen: 'مطبخ',
-    interest_dressing: 'دريسينج روم',
-    interest_bedroom: 'غرفة نوم',
-    interest_full: 'منزل كامل',
-    interest_other: 'أخرى',
-    form_message: 'رسالتك <span>(اختياري)</span>',
-    form_submit: 'أرسل عبر واتساب',
-    form_note: 'بالإرسال توافق على التواصل معك بخصوص استفسارك. لا تُجمع بيانات البطاقات على هذا الموقع.',
-    form_success: 'شكراً — رسالتك جاهزة في واتساب. أرسلها وسيرد فريقنا قريباً.',
-    footer_desc: 'مطابخ ودريسينج روم وأثاث مخصص، تُصمم وتُنفذ في القاهرة الجديدة بخامات معتمدة وتركيب احترافي وضمان خمس سنوات.',
-    footer_badge_1: 'ضمان 5 سنوات',
-    footer_badge_2: 'توصيل ثابت 5,000 جنيه',
-    footer_badge_3: 'إنستاباي والمحفظة',
-    footer_explore: 'استكشف',
-    footer_visit: 'زيارة وتواصل',
-    footer_faq: 'الأسئلة الشائعة',
-    footer_showroom_page: 'المعرض والاتجاهات',
-    footer_hours: 'يومياً: 11:00 صباحاً – 10:00 مساءً<br>التجمع الخامس، القاهرة الجديدة',
-    footer_copyright_prefix: 'نالام للمطابخ والدريسينج روم.',
-    footer_copyright_suffix: 'جميع الحقوق محفوظة.',
-    footer_shop: 'تسوق المجموعة',
-    footer_back_top: 'إلى الأعلى ↑',
-    cart_eyebrow: 'اختيارك',
-    cart_title: 'سلة التسوق',
-    cart_items_heading: 'قطعك',
-    cart_empty_title: 'سلتك ما زالت فارغة.',
-    cart_empty_desc: 'استكشف المجموعة وأضف قطعة للبدء. يبقى التوصيل ثابتاً بـ 5,000 جنيه متى كنت جاهزاً.',
-    cart_empty_cta: 'استكشف الكاتالوج',
-    checkout_step_details: 'بيانات التوصيل',
-    checkout_required: 'كل الحقول مطلوبة',
-    checkout_name: 'اسم العميل',
-    checkout_phone: 'رقم الهاتف',
-    checkout_gov: 'المحافظة',
-    checkout_floor: 'رقم الدور <span>(للتنظيم اللوجستي)</span>',
-    checkout_account_required: 'الحساب مطلوب لتأكيد طلبك. سلتك محفوظة وتُستأنف بعد تسجيل الدخول.',
-    checkout_step_payment: 'طريقة الدفع',
-    checkout_no_card: 'لا تُجمع بيانات البطاقات',
-    payment_instapay_sub: 'تحويل إلى حساب إنستاباي',
-    payment_wallet: 'المحفظة الإلكترونية',
-    payment_wallet_sub: 'إرسال إلى رقم محفظتنا',
-    payment_details_label: 'بيانات الدفع',
-    copy: 'نسخ',
-    payment_instapay_note: 'أرسل الإجمالي ثم شارك الإيصال على واتساب. نؤكد موعد التصنيع في نفس اليوم.',
-    summary_items: 'القطع',
-    summary_delivery: 'التوصيل',
-    summary_total: 'الإجمالي',
-    checkout_confirm: 'تأكيد الطلب والإرسال عبر واتساب',
-    checkout_secure: 'ملخص آمن · يؤكد فريقنا الدفع على واتساب',
-    wishlist_eyebrow: 'محفوظة لوقت لاحق',
-    wishlist_title: 'المفضلة',
-    wishlist_empty_title: 'لا يوجد محفوظ بعد.',
-    wishlist_empty_desc: 'اضغط القلب على أي قطعة لتبقى هنا أثناء التفكير.',
-    wishlist_empty_cta: 'تصفح المجموعة',
-    wishlist_note: 'تبقى القطع المحفوظة على هذا الجهاز. أضف أي قطعة إلى سلتك متى أردت.',
-    wishlist_cta: 'متابعة التصفح',
-    modal_price_label: 'السعر شامل التركيب',
-    modal_add_cart: 'أضف إلى السلة',
-    modal_spec_dimensions: 'المقاسات',
-    modal_spec_material: 'الخامة',
-    modal_spec_hardware: 'الإكسسوارات',
-    modal_spec_finish: 'التشطيب',
-    modal_spec_code: 'الكود',
-    modal_delivery: 'توصيل ثابت 5,000 جنيه وتركيب احترافي في القاهرة والجيزة، أياً كان حجم الطلب.',
-    modal_support: 'تحتاج مقاساً أو تشطيباً مخصصاً؟',
-    modal_support_link: 'اسأل مصمماً على واتساب',
-    auth_visual_title: 'منزلك، بكل تفاصيله.',
-    auth_visual_desc: 'حساب واحد لطلباتك وبيانات التوصيل وسجل الضمان — محفوظ بهدوء على هذا الجهاز.',
-    auth_benefit_1: 'استأنف سلتك تماماً كما تركتها',
-    auth_benefit_2: 'احتفظ ببيانات التوصيل والدور جاهزة',
-    auth_benefit_3: 'اطلع على تاريخ طلباتك وسجل الضمان',
-    auth_title: 'أهلاً بعودتك.',
-    auth_subtitle: 'سجل الدخول لتأكيد طلبك وحفظ تفاصيلك في مكان واحد.',
-    auth_tab_signin: 'تسجيل الدخول',
-    auth_tab_signup: 'إنشاء حساب',
-    auth_email: 'البريد الإلكتروني',
-    auth_password: 'كلمة المرور',
-    auth_signin_cta: 'تسجيل الدخول والمتابعة',
-    auth_footnote: 'يحفظ هذا الموقع الحسابات محلياً على جهازك. تُشفّر كلمة المرور قبل الحفظ؛ لا تعِد استخدام كلمة مرور حساسة.',
-    auth_support: 'تحتاج مساعدة في حسابك؟',
-    auth_name: 'الاسم الكامل',
-    auth_phone: 'رقم الهاتف',
-    auth_gov: 'المحافظة',
-    auth_confirm: 'تأكيد كلمة المرور',
-    auth_signup_cta: 'إنشاء الحساب',
-    auth_signup_note: 'بإنشاء حساب توافق على التواصل معك بخصوص طلباتك واستشاراتك. لا تُحفظ بيانات البطاقات.',
-    profile_stat_orders: 'الطلبات',
-    profile_stat_wishlist: 'المفضلة',
-    profile_stat_cart: 'في السلة',
-    profile_recent_orders: 'أحدث الطلبات',
-    profile_view_cart: 'عرض السلة',
-    profile_view_wishlist: 'المفضلة',
-    profile_signout: 'تسجيل الخروج',
-    account_signin: 'تسجيل الدخول'
-  };
-
-  var MESSAGES = {
-    en: {
-      signin_label: 'Sign In',
-      items: '{{n}} items',
-      item_one: '{{n}} item',
-      added: '{{name}} added to your cart.',
-      removed: 'Removed from your cart.',
-      wish_added: '{{name}} saved to your wishlist.',
-      wish_removed: '{{name}} removed from your wishlist.',
-      max_qty: 'You can add up to {{n}} of this piece per order.',
-      copied: 'Copied to clipboard.',
-      copy_failed: 'Could not copy — please select the text manually.',
-      auth_required: 'Sign in to confirm your order. Your cart is saved.',
-      auth_banner: 'Sign in or create an account to confirm your order. Your cart and delivery details are waiting.',
-      resume_success: 'Signed in — your cart is ready. Confirm your order below.',
-      welcome: 'Welcome back, {{name}}.',
-      account_created: 'Your account is ready. Welcome to Nalam, {{name}}.',
-      signed_out: 'You have been signed out.',
-      order_sent: 'Your order summary is open in WhatsApp. Send the message and we will confirm your slot.',
-      order_saved: 'Order {{id}} saved to your account.',
-      empty_cart: 'Your cart is empty. Add a piece to continue.',
-      empty_wishlist: 'Your wishlist is empty.',
-      signed_in_as: 'Signed in as {{name}} — your details are prefilled.',
-      guest_note: 'An account is required to confirm your order. Your cart is saved and resumes after sign-in.',
-      contact_ready: 'Your message is ready in WhatsApp. Send it and our team will reply shortly.',
-      cart_meta: '{{count}} · Cairo & Giza delivery',
-      wish_meta: '{{count}} saved',
-      order_note: 'Flat-rate 5,000 EGP delivery & professional installation across anywhere in Cairo & Giza (up to 2nd floor) applies to any order size, whether single pieces or full rooms.',
-      wallet_note: 'Send the total to our mobile wallet, then share the receipt on WhatsApp.',
-      err_required: 'This field is required.',
-      err_name: 'Please enter your full name (at least 2 characters).',
-      err_phone: 'Enter a valid Egyptian mobile number, for example 011 3228 4750.',
-      err_email: 'Enter a valid email address.',
-      err_password: 'Use at least 8 characters with letters and numbers.',
-      err_confirm: 'The passwords do not match.',
-      err_payment: 'Choose InstaPay or Mobile Wallet.',
-      err_floor: 'Select the floor for installation logistics.',
-      err_exists: 'An account already exists with this email. Please sign in.',
-      err_credentials: 'Email or password is incorrect.',
-      err_secure: 'Account security is unavailable in this browser context. Open the site over HTTPS.',
-      no_orders: 'No orders yet — your first piece is waiting.',
-      order_status: 'Sent via WhatsApp',
-      cart_short: 'Cart',
-      wish_short: 'Saved',
-      close: 'Close',
-      wa_order_title: 'NEW NALAM ORDER',
-      wa_order_title_ar: 'طلب جديد من نالام',
-      wa_order_ref: 'Order reference',
-      wa_customer: 'Customer',
-      wa_phone: 'Phone',
-      wa_governorate: 'Governorate',
-      wa_floor: 'Floor',
-      wa_payment: 'Payment method',
-      wa_items: 'ITEMS',
-      wa_items_ar: 'القطع',
-      wa_qty: 'Qty',
-      wa_dimensions: 'Dimensions',
-      wa_subtotal: 'Items subtotal',
-      wa_delivery: 'Delivery & installation',
-      wa_total: 'TOTAL',
-      wa_delivery_note: 'Flat 5,000 EGP delivery & professional installation across Cairo & Giza (up to 2nd floor), any order size.',
-      wa_delivery_note_ar: 'توصيل وتركيب احترافي بسعر ثابت 5,000 جنيه مصري في القاهرة والجيزة (حتى الدور الثاني)، لأي حجم طلب.',
-      wa_thanks: 'Thank you — the Nalam team will confirm your production slot on this chat.',
-      wa_thanks_ar: 'شكراً — سيؤكد فريق نالام موعد التصنيع على هذه المحادثة.',
-      wa_contact_title: 'NEW NALAM CONSULTATION',
-      wa_contact_title_ar: 'استشارة جديدة من نالام',
-      wa_interest: 'Interested in',
-      wa_message: 'Message',
-      wa_contact_thanks: 'Please send this message so our designers can reply.',
-      wa_contact_thanks_ar: 'يرجى إرسال هذه الرسالة ليرد مصممونا.',
-      auth_title_signin: 'Welcome back.',
-      auth_subtitle_signin: 'Sign in to confirm your order and keep your details in one place.',
-      auth_title_signup: 'Create your Nalam account.',
-      auth_subtitle_signup: 'One account for orders, delivery details and your warranty record.',
-      auth_tab_signin: 'Sign In',
-      auth_tab_signup: 'Create Account',
-      auth_busy: 'Please wait…',
-      date_locale: 'en-GB',
-      footer_year: '2026'
+  const HERO_STAGES = [
+    {
+      stepEn: 'Stage 01 • Architectural Canvas',
+      stepAr: 'المرحلة 01 • الفراغ المعماري',
+      titleEn: 'Raw Space, Measured to the Millimeter',
+      titleAr: 'فراغ خام بمقاسات هندسية دقيقة',
+      descEn: 'Every Nalam kitchen begins with laser site measurements, plumbing and electrical mapping, and a 3D proportion study tailored to your room.',
+      descAr: 'يبدأ كل مطبخ من نالام برفع مقاسات بالليزر وتخطيط دقيق للسباكة والكهرباء ودراسة ثلاثية الأبعاد متكاملة.',
+      chipsEn: ['Laser Survey', '3D Proportion Study', 'Zero Guesswork'],
+      chipsAr: ['رفع مقاسات بالليزر', 'دراسة 3D واقعية', 'بدون تخمين']
     },
-    ar: {
-      signin_label: 'تسجيل الدخول',
-      items: '{{n}} قطعة',
-      item_one: 'قطعة واحدة',
-      added: 'تمت إضافة {{name}} إلى سلتك.',
-      removed: 'تمت الإزالة من سلتك.',
-      wish_added: 'تم حفظ {{name}} في المفضلة.',
-      wish_removed: 'تمت إزالة {{name}} من المفضلة.',
-      max_qty: 'يمكنك إضافة {{n}} قطعة كحد أقصى من هذا المنتج في الطلب.',
-      copied: 'تم النسخ.',
-      copy_failed: 'تعذر النسخ — حدد النص يدوياً.',
-      auth_required: 'سجل الدخول لتأكيد طلبك. سلتك محفوظة.',
-      auth_banner: 'سجل الدخول أو أنشئ حساباً لتأكيد طلبك. سلتك وبيانات التوصيل في انتظارك.',
-      resume_success: 'تم تسجيل الدخول — سلتك جاهزة. أكّد طلبك بالأسفل.',
-      welcome: 'أهلاً بعودتك، {{name}}.',
-      account_created: 'حسابك جاهز. أهلاً بك في نالام، {{name}}.',
-      signed_out: 'تم تسجيل الخروج.',
-      order_sent: 'ملخص طلبك مفتوح في واتساب. أرسل الرسالة وسنؤكد موعدك.',
-      order_saved: 'تم حفظ الطلب {{id}} في حسابك.',
-      empty_cart: 'سلتك فارغة. أضف قطعة للمتابعة.',
-      empty_wishlist: 'قائمة المفضلة فارغة.',
-      signed_in_as: 'مسجل الدخول باسم {{name}} — بياناتك معبأة مسبقاً.',
-      guest_note: 'الحساب مطلوب لتأكيد طلبك. سلتك محفوظة وتُستأنف بعد تسجيل الدخول.',
-      cart_meta: '{{count}} · توصيل القاهرة والجيزة',
-      wish_meta: '{{count}} محفوظة',
-      order_note: 'التوصيل والتركيب الاحترافي بسعر ثابت 5,000 جنيه مصري في أي مكان بالقاهرة والجيزة (حتى الدور الثاني) ينطبق على أي حجم طلب، سواء قطعة واحدة أو غرف كاملة.',
-      wallet_note: 'أرسل الإجمالي إلى محفظتنا الإلكترونية ثم شارك الإيصال على واتساب.',
-      err_required: 'هذا الحقل مطلوب.',
-      err_name: 'أدخل اسمك الكامل (حرفان على الأقل).',
-      err_phone: 'أدخل رقم موبايل مصري صحيح، مثل 011 3228 4750.',
-      err_email: 'أدخل بريداً إلكترونياً صحيحاً.',
-      err_password: 'استخدم 8 أحرف على الأقل مع حروف وأرقام.',
-      err_confirm: 'كلمتا المرور غير متطابقتين.',
-      err_payment: 'اختر إنستاباي أو المحفظة الإلكترونية.',
-      err_floor: 'اختر الدور لأغراض التركيب.',
-      err_exists: 'يوجد حساب بهذا البريد بالفعل. سجل الدخول.',
-      err_credentials: 'البريد الإلكتروني أو كلمة المرور غير صحيحة.',
-      err_secure: 'أمان الحساب غير متاح في هذه البيئة. افتح الموقع عبر HTTPS.',
-      no_orders: 'لا توجد طلبات بعد — قطعتك الأولى في انتظارك.',
-      order_status: 'أُرسل عبر واتساب',
-      cart_short: 'السلة',
-      wish_short: 'المحفوظات',
-      close: 'إغلاق',
-      wa_order_title: 'NEW NALAM ORDER',
-      wa_order_title_ar: 'طلب جديد من نالام',
-      wa_order_ref: 'رقم الطلب',
-      wa_customer: 'العميل',
-      wa_phone: 'الهاتف',
-      wa_governorate: 'المحافظة',
-      wa_floor: 'الدور',
-      wa_payment: 'طريقة الدفع',
-      wa_items: 'ITEMS',
-      wa_items_ar: 'القطع',
-      wa_qty: 'الكمية',
-      wa_dimensions: 'المقاسات',
-      wa_subtotal: 'إجمالي القطع',
-      wa_delivery: 'التوصيل والتركيب',
-      wa_total: 'الإجمالي',
-      wa_delivery_note: 'Flat 5,000 EGP delivery & professional installation across Cairo & Giza (up to 2nd floor), any order size.',
-      wa_delivery_note_ar: 'توصيل وتركيب احترافي بسعر ثابت 5,000 جنيه مصري في القاهرة والجيزة (حتى الدور الثاني)، لأي حجم طلب.',
-      wa_thanks: 'Thank you — the Nalam team will confirm your production slot on this chat.',
-      wa_thanks_ar: 'شكراً — سيؤكد فريق نالام موعد التصنيع على هذه المحادثة.',
-      wa_contact_title: 'NEW NALAM CONSULTATION',
-      wa_contact_title_ar: 'استشارة جديدة من نالام',
-      wa_interest: 'المهتم به',
-      wa_message: 'الرسالة',
-      wa_contact_thanks: 'Please send this message so our designers can reply.',
-      wa_contact_thanks_ar: 'يرجى إرسال هذه الرسالة ليرد مصممونا.',
-      auth_title_signin: 'أهلاً بعودتك.',
-      auth_subtitle_signin: 'سجل الدخول لتأكيد طلبك وحفظ تفاصيلك في مكان واحد.',
-      auth_title_signup: 'أنشئ حساب نالام.',
-      auth_subtitle_signup: 'حساب واحد للطلبات وبيانات التوصيل وسجل الضمان.',
-      auth_tab_signin: 'تسجيل الدخول',
-      auth_tab_signup: 'إنشاء حساب',
-      auth_busy: 'لحظة من فضلك…',
-      date_locale: 'ar-EG',
-      footer_year: '2026'
-    }
-  };
-
-  var PLACEHOLDERS = {
-    en: {
-      contactName: 'Your full name',
-      contactPhone: '01X XXXX XXXX',
-      contactMessage: 'Room size, preferred finish, timeline…',
-      checkoutName: 'Full name',
-      checkoutPhone: '01X XXXX XXXX',
-      signInEmail: 'you@example.com',
-      signInPassword: 'Your password',
-      signUpName: 'Your full name',
-      signUpPhone: '01X XXXX XXXX',
-      signUpEmail: 'you@example.com',
-      signUpPassword: 'At least 8 characters',
-      signUpConfirm: 'Repeat password'
+    {
+      stepEn: 'Stage 02 • Base Foundation',
+      stepAr: 'المرحلة 02 • الوحدات السفلية',
+      titleEn: 'Good Wood Carcasses & Waterproof Boardium',
+      titleAr: 'علب جود وود وبورديوم مقاوم للمياه',
+      descEn: 'White HPL kitchen carcasses crafted from renowned Good Wood / Top Wood boards paired with 100% waterproof Boardium under the sink.',
+      descAr: 'علب مطابخ HPL أبيض مصنعة من ألواح جود وود / توب وود الشهيرة مع وحدة حوض بورديوم مقاوم للمياه بنسبة 100%.',
+      chipsEn: ['Good Wood / Top Wood', '100% Boardium Sink', 'White HPL Body'],
+      chipsAr: ['جود وود / توب وود', 'حوض بورديوم 100%', 'علب HPL أبيض']
     },
-    ar: {
-      contactName: 'اسمك الكامل',
-      contactPhone: '01X XXXX XXXX',
-      contactMessage: 'مساحة الغرفة، التشطيب المفضل، التوقيت…',
-      checkoutName: 'الاسم الكامل',
-      checkoutPhone: '01X XXXX XXXX',
-      signInEmail: 'you@example.com',
-      signInPassword: 'كلمة المرور',
-      signUpName: 'اسمك الكامل',
-      signUpPhone: '01X XXXX XXXX',
-      signUpEmail: 'you@example.com',
-      signUpPassword: '8 أحرف على الأقل',
-      signUpConfirm: 'أعد كلمة المرور'
+    {
+      stepEn: 'Stage 03 • Vertical Architecture',
+      stepAr: 'المرحلة 03 • الوحدات الطولية',
+      titleEn: 'Full-Height Pantry & Tall Storage Towers',
+      titleAr: 'وحدات تخزين طولية بارتفاع كامل',
+      descEn: 'Floor-to-ceiling tall units seamlessly house ovens, pantries, and refrigerator alcoves with shadow-gap precision and Turkish SAMET hinges.',
+      descAr: 'وحدات طولية حتى السقف تستوعب الأفران والثلاجة ووحدات التخزين بدقة متناهية ومفصلات SAMET تركية أصلية.',
+      chipsEn: ['260 cm Full Height', 'Turkish SAMET', 'Seamless Alcoves'],
+      chipsAr: ['ارتفاع 260 سم', 'مفصلات SAMET', 'توزيع ذكي']
+    },
+    {
+      stepEn: 'Stage 04 • Upper Cabinetry',
+      stepAr: 'المرحلة 04 • الوحدات العلوية',
+      titleEn: 'Balanced Elevation & Hidden LED Profiles',
+      titleAr: 'توازن علوي وإضاءة ليد مخفية',
+      descEn: 'Upper cabinets align with minimal gaps and integrated warm task lighting that highlights veined quartz counters and architectural textures.',
+      descAr: 'وحدات علوية بأقل فراغات ممكنة مع إضاءة ليد دافئة مدمجة تبرز فخامة الكوارتز وتفاصيل التصميم.',
+      chipsEn: ['Minimal-Gap Joinery', 'Warm LED Channel', '10 cm Top Filler'],
+      chipsAr: ['تقفيل دقيق', 'إضاءة ليد دافئة', 'فيلر علوي 10 سم']
+    },
+    {
+      stepEn: 'Stage 05 • Hardware & Appliances',
+      stepAr: 'المرحلة 05 • الأجهزة والإكسسوارات',
+      titleEn: 'Built-In Appliances & Italian FGV Glide',
+      titleAr: 'أجهزة بيلت إن ومجر FGV إيطالي',
+      descEn: 'Concealed Italian FGV undermount soft-close runners and precision cutouts integrate hobs, hoods, ovens, and sinks into one cohesive plane.',
+      descAr: 'مجر أدراج سفلية مخفية من FGV الإيطالية وفتحات دقيقة تدمج البوتاجاز والشفاط والفرن والحوض بتناغم تام.',
+      chipsEn: ['Italian FGV Runners', 'Soft-Close Motion', 'Built-In Integration'],
+      chipsAr: ['مجر FGV إيطالي', 'إغلاق هادئ', 'دمج الأجهزة']
+    },
+    {
+      stepEn: 'Stage 06 • Ready to Live In',
+      stepAr: 'المرحلة 06 • التسليم النهائي',
+      titleEn: 'Your Zone Is Glam — Backed by 5-Year Warranty',
+      titleAr: 'مساحتك بأناقة فاخرة — بضمان 5 سنوات',
+      descEn: 'Delivered and aligned by Nalam site engineers anywhere in Cairo & Giza for one flat 5,000 EGP fee (up to 2nd floor), with 5-year warranty.',
+      descAr: 'توصيل وتركيب احترافي على يد مهندسي نالام في القاهرة والجيزة بسعر ثابت 5,000 ج.م (حتى الدور الثاني) مع ضمان 5 سنوات.',
+      chipsEn: ['5-Year Warranty', '5,000 EGP Flat Delivery', 'Engineer Installed'],
+      chipsAr: ['ضمان 5 سنوات', 'توصيل ثابت 5,000 ج.م', 'تركيب هندسي']
     }
-  };
-
-  function t(key, vars) {
-    var table = MESSAGES[state.lang] || MESSAGES.en;
-    var text = table[key] != null ? table[key] : (MESSAGES.en[key] != null ? MESSAGES.en[key] : key);
-    return String(text).replace(/\{\{(\w+)\}\}/g, function (_, token) {
-      return vars && vars[token] != null ? String(vars[token]) : '';
-    });
-  }
-
-  function esc(value) {
-    return String(value == null ? '' : value)
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#39;');
-  }
-
-  function money(amount) {
-    var value = Number(amount) || 0;
-    return value.toLocaleString('en-US') + ' EGP';
-  }
-
-  function formatDate(value) {
-    var date = value ? new Date(value) : new Date();
-    try {
-      return date.toLocaleDateString(t('date_locale'), { day: 'numeric', month: 'short', year: 'numeric' });
-    } catch (error) {
-      return date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
-    }
-  }
-
-  function categoryName(id) {
-    var category = CATEGORY_MAP.get(id);
-    if (!category) return id;
-    return state.lang === 'ar' ? category.ar : category.en;
-  }
-
-  function productTitle(product) {
-    return state.lang === 'ar' ? product.titleAr : product.titleEn;
-  }
-
-  function productMaterial(product) {
-    return state.lang === 'ar' ? product.materialAr : product.materialEn;
-  }
-
-  function productHardware(product) {
-    return state.lang === 'ar' ? product.hardwareAr : product.hardwareEn;
-  }
-
-  function productFinish(product) {
-    return state.lang === 'ar' ? product.finishAr : product.finishEn;
-  }
-
-  function productImageLabel(product, index) {
-    var image = product.images[index];
-    if (!image) return state.lang === 'ar' ? 'صورة المنتج' : 'Product view';
-    return state.lang === 'ar' ? image.labelAr : image.labelEn;
-  }
-
-  function itemCountText(count) {
-    if (state.lang === 'ar') return count === 1 ? 'قطعة واحدة' : count + ' قطعة';
-    return count === 1 ? '1 item' : count + ' items';
-  }
-
-  function readJSON(key, fallback) {
-    try {
-      var raw = window.localStorage.getItem(key);
-      if (!raw) return fallback;
-      var parsed = JSON.parse(raw);
-      return parsed == null ? fallback : parsed;
-    } catch (error) {
-      return fallback;
-    }
-  }
-
-  function writeJSON(key, value) {
-    try {
-      window.localStorage.setItem(key, JSON.stringify(value));
-    } catch (error) {
-      /* Storage can be unavailable in private browsing; the session still works in memory. */
-    }
-  }
-
-  function readText(key, fallback) {
-    try {
-      return window.localStorage.getItem(key) || fallback;
-    } catch (error) {
-      return fallback;
-    }
-  }
-
-  function writeText(key, value) {
-    try {
-      window.localStorage.setItem(key, value);
-    } catch (error) {
-      /* Ignore unavailable storage. */
-    }
-  }
-
-  function $(selector, root) {
-    return (root || document).querySelector(selector);
-  }
-
-  function $$(selector, root) {
-    return Array.prototype.slice.call((root || document).querySelectorAll(selector));
-  }
-
-  function normalizeCart(raw) {
-    if (!Array.isArray(raw)) return [];
-    var seen = new Map();
-    raw.forEach(function (entry) {
-      if (!entry || !PRODUCT_MAP.has(entry.id)) return;
-      var qty = Math.max(1, Math.min(MAX_QTY, parseInt(entry.qty, 10) || 1));
-      seen.set(entry.id, Math.min(MAX_QTY, (seen.get(entry.id) || 0) + qty));
-    });
-    return Array.from(seen, function (pair) { return { id: pair[0], qty: pair[1] }; });
-  }
-
-  function normalizeWishlist(raw) {
-    if (!Array.isArray(raw)) return [];
-    return Array.from(new Set(raw.filter(function (id) { return PRODUCT_MAP.has(id); })));
-  }
-
-  function saveCart() {
-    writeJSON(STORE_KEYS.cart, state.cart);
-  }
-
-  function saveWishlist() {
-    writeJSON(STORE_KEYS.wishlist, state.wishlist);
-  }
-
-  function saveAccounts() {
-    writeJSON(STORE_KEYS.accounts, state.accounts);
-  }
-
-  function currentAccount() {
-    if (!state.sessionId) return null;
-    return state.accounts.find(function (account) { return account.id === state.sessionId; }) || null;
-  }
-
-  function cartDetails() {
-    return state.cart.map(function (entry) {
-      var product = PRODUCT_MAP.get(entry.id);
-      return {
-        product: product,
-        qty: entry.qty,
-        lineTotal: product.priceEgp * entry.qty
-      };
-    }).filter(function (entry) { return !!entry.product; });
-  }
-
-  function cartQuantity() {
-    return state.cart.reduce(function (total, entry) { return total + entry.qty; }, 0);
-  }
-
-  function cartSubtotal() {
-    return cartDetails().reduce(function (total, entry) { return total + entry.lineTotal; }, 0);
-  }
-
-  function deliveryFee() {
-    return state.cart.length ? Number(CFG.baseDeliveryFeeEgp) || 5000 : 0;
-  }
-
-  function cartTotal() {
-    return cartSubtotal() + deliveryFee();
-  }
-
-  function saveLanguage() {
-    writeText(STORE_KEYS.lang, state.lang);
-  }
-
-  /* ------------------------------------------------------------------------
-     Branded product artwork and progressive photo loading
-     ------------------------------------------------------------------------ */
-
-  var PALETTES = {
-    bed: ['#EFE4D2', '#C7AA80', '#3B3126'],
-    dressing: ['#E6DAC7', '#B59A75', '#372D23'],
-    kitchens: ['#E1E7DD', '#9AAE9D', '#263129'],
-    vanity: ['#F2E7D6', '#D2B48B', '#3D3126'],
-    nightstand: ['#ECE1CF', '#C0A47C', '#3A2F25'],
-    bedrooms: ['#E8DDCE', '#BFA683', '#362D24'],
-    'coffee-corner': ['#E4D8C9', '#A98D6D', '#33291F'],
-    'shoe-cabinets': ['#E9DECE', '#B99E7B', '#392F25'],
-    'wc-units': ['#E7E6DE', '#B3B2A1', '#30322B']
-  };
-
-  var FALLBACK_CACHE = new Map();
-
-  function fallbackArt(product, index) {
-    var key = product.id + ':' + index;
-    if (FALLBACK_CACHE.has(key)) return FALLBACK_CACHE.get(key);
-    var palette = PALETTES[product.category] || ['#EFE5D5', '#C4AA86', '#3A3026'];
-    var category = CATEGORY_MAP.get(product.category);
-    var categoryLabel = category ? category.en.toUpperCase() : 'NALAM';
-    var angle = product.images[index] ? product.images[index].labelEn : 'Atelier view';
-    var shift = (index % 4) * 34;
-    var svg = '<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="900" viewBox="0 0 1200 900" role="img">' +
-      '<defs>' +
-      '<linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">' +
-      '<stop offset="0" stop-color="' + palette[0] + '"/>' +
-      '<stop offset="0.62" stop-color="' + palette[1] + '"/>' +
-      '<stop offset="1" stop-color="' + palette[2] + '"/>' +
-      '</linearGradient>' +
-      '<radialGradient id="glow" cx="50%" cy="50%" r="50%">' +
-      '<stop offset="0" stop-color="#FFF6E4" stop-opacity="0.82"/>' +
-      '<stop offset="1" stop-color="#FFF6E4" stop-opacity="0"/>' +
-      '</radialGradient>' +
-      '</defs>' +
-      '<rect width="1200" height="900" fill="url(#bg)"/>' +
-      '<circle cx="' + (920 - shift) + '" cy="' + (190 + shift) + '" r="330" fill="url(#glow)"/>' +
-      '<g opacity="0.24" fill="none" stroke="#FFF9EE" stroke-width="3">' +
-      '<rect x="180" y="250" width="840" height="470" rx="18"/>' +
-      '<path d="M 330 720 V 360 A 130 130 0 0 1 590 360 V 720"/>' +
-      '<path d="M 660 720 V 360 A 130 130 0 0 1 920 360 V 720"/>' +
-      '<path d="M 180 470 H 1020"/>' +
-      '<path d="M 180 590 H 1020"/>' +
-      '<circle cx="985" cy="740" r="46"/>' +
-      '</g>' +
-      '<g fill="#FFFDF7" font-family="Georgia, Times New Roman, serif">' +
-      '<text x="88" y="126" font-size="42" letter-spacing="10">NALAM</text>' +
-      '<text x="90" y="166" font-family="Arial, Helvetica, sans-serif" font-size="15" letter-spacing="6" opacity="0.7">ATELIER COLLECTION</text>' +
-      '<text x="90" y="735" font-size="31" letter-spacing="2">' + esc(categoryLabel) + '</text>' +
-      '<text x="90" y="782" font-family="Arial, Helvetica, sans-serif" font-size="17" letter-spacing="3" opacity="0.72">' + esc(product.code) + '</text>' +
-      '</g>' +
-      '<g>' +
-      '<rect x="88" y="812" width="' + (130 + angle.length * 9) + '" height="40" rx="20" fill="#FFF9EE" fill-opacity="0.16" stroke="#FFF9EE" stroke-opacity="0.35"/>' +
-      '<text x="108" y="838" fill="#FFFDF7" font-family="Arial, Helvetica, sans-serif" font-size="14" letter-spacing="2">' + esc(angle.toUpperCase()) + '</text>' +
-      '</g>' +
-      '<text x="1112" y="846" text-anchor="end" fill="#FFFDF7" fill-opacity="0.58" font-family="Arial, Helvetica, sans-serif" font-size="13" letter-spacing="3">MADE TO ORDER</text>' +
-      '</svg>';
-    var uri = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
-    FALLBACK_CACHE.set(key, uri);
-    return uri;
-  }
-
-  var PHOTO_WAITERS = new Map();
-  var photoObserver = null;
-
-  function applyProductPhoto(img, product, index) {
-    if (!img || !product) return;
-    var image = product.images[index] || product.images[0];
-    var fallback = fallbackArt(product, index);
-    if (!image || !image.src) {
-      img.src = fallback;
-      return;
-    }
-    var real = image.src;
-    var status = PHOTO_CACHE.get(real);
-    if (status === 'ok') {
-      img.src = real;
-      return;
-    }
-    if (status === 'fail') {
-      img.src = fallback;
-      return;
-    }
-    img.src = fallback;
-    if (status === 'loading') {
-      var waiting = PHOTO_WAITERS.get(real) || [];
-      waiting.push(img);
-      PHOTO_WAITERS.set(real, waiting);
-      return;
-    }
-    PHOTO_CACHE.set(real, 'loading');
-    var probe = new Image();
-    probe.decoding = 'async';
-    probe.onload = function () {
-      PHOTO_CACHE.set(real, 'ok');
-      var targets = PHOTO_WAITERS.get(real) || [];
-      targets.push(img);
-      PHOTO_WAITERS.delete(real);
-      targets.forEach(function (target) {
-        if (target && target.isConnected) target.src = real;
-      });
-    };
-    probe.onerror = function () {
-      PHOTO_CACHE.set(real, 'fail');
-      PHOTO_WAITERS.delete(real);
-    };
-    probe.src = real;
-  }
-
-  function observeProductPhoto(img, product, index) {
-    img.dataset.photoProduct = product.id;
-    img.dataset.photoIndex = String(index);
-    img.src = fallbackArt(product, index);
-    if (!('IntersectionObserver' in window)) {
-      applyProductPhoto(img, product, index);
-      return;
-    }
-    if (!photoObserver) {
-      photoObserver = new IntersectionObserver(function (entries) {
-        entries.forEach(function (entry) {
-          if (!entry.isIntersecting) return;
-          var target = entry.target;
-          var productRecord = PRODUCT_MAP.get(target.dataset.photoProduct);
-          if (productRecord) {
-            applyProductPhoto(target, productRecord, parseInt(target.dataset.photoIndex, 10) || 0);
-          }
-          photoObserver.unobserve(target);
-        });
-      }, { rootMargin: '320px 0px', threshold: 0.01 });
-    }
-    photoObserver.observe(img);
-  }
-
-  /* ------------------------------------------------------------------------
-     Catalogue
-     ------------------------------------------------------------------------ */
-
-  function trackPixel(eventName, params) {
-    if (!window.NALAM_PIXEL_READY || typeof window.fbq !== 'function') return;
-    try {
-      window.fbq('track', eventName, params || {});
-    } catch (error) {
-      /* Analytics must never interrupt a purchase flow. */
-    }
-  }
-
-  function renderFilters() {
-    if (!refs.filterBar) return;
-    var total = PRODUCTS.length;
-    var html = '<button type="button" class="filter-tab' + (state.activeCategory === 'all' ? ' active' : '') + '" role="tab" aria-selected="' + (state.activeCategory === 'all') + '" data-filter="all">' +
-      esc(state.lang === 'ar' ? 'الكل' : 'All') + ' <span class="filter-count">' + total + '</span></button>';
-    CATEGORIES.forEach(function (category) {
-      if (category.id === 'all') return;
-      var count = PRODUCTS.filter(function (product) { return product.category === category.id; }).length;
-      if (!count) return;
-      var active = state.activeCategory === category.id;
-      html += '<button type="button" class="filter-tab' + (active ? ' active' : '') + '" role="tab" aria-selected="' + active + '" data-filter="' + esc(category.id) + '">' +
-        esc(state.lang === 'ar' ? category.ar : category.en) + ' <span class="filter-count">' + count + '</span></button>';
-    });
-    refs.filterBar.innerHTML = html;
-  }
-
-  function productCardHTML(product) {
-    var saved = state.wishlist.indexOf(product.id) !== -1;
-    return '<article class="product-card" data-product-card="' + esc(product.id) + '">' +
-      '<div class="product-media" data-open-product="' + esc(product.id) + '" role="button" tabindex="0" aria-label="' + esc(productTitle(product)) + '">' +
-      '<img class="product-img" data-photo-product="' + esc(product.id) + '" data-photo-index="0" alt="' + esc(productTitle(product)) + ' — ' + esc(productImageLabel(product, 0)) + '" width="1200" height="900" loading="lazy" decoding="async">' +
-      '<div class="product-badges">' +
-      '<span class="product-cat-badge">' + esc(categoryName(product.category)) + '</span>' +
-      '<span class="product-code-badge">' + esc(product.code) + '</span>' +
-      '</div>' +
-      '<button type="button" class="product-wish' + (saved ? ' saved' : '') + '" data-wishlist-toggle="' + esc(product.id) + '" aria-pressed="' + saved + '" aria-label="' + esc(state.lang === 'ar' ? 'حفظ في المفضلة' : 'Save to wishlist') + '">' + (saved ? '♥' : '♡') + '</button>' +
-      '<span class="product-angles">' + product.images.length + ' ' + esc(state.lang === 'ar' ? 'زوايا' : 'views') + '</span>' +
-      '</div>' +
-      '<div class="product-body">' +
-      '<div class="product-category-line"><span>' + esc(categoryName(product.category)) + '</span><span>' + esc(product.code) + '</span></div>' +
-      '<h3 class="product-title" data-open-product="' + esc(product.id) + '">' + esc(productTitle(product)) + '</h3>' +
-      '<p class="product-dims">' + esc(product.dimensions) + '</p>' +
-      '<p class="product-spec">' + esc(productMaterial(product)) + '</p>' +
-      '<div class="product-footer">' +
-      '<div><span class="product-price-label">' + esc(state.lang === 'ar' ? 'السعر شامل التركيب' : 'Price incl. installation') + '</span><span class="product-price-val">' + money(product.priceEgp) + '</span></div>' +
-      '</div>' +
-      '<div class="product-actions">' +
-      '<button type="button" class="btn btn-primary" data-add-to-cart="' + esc(product.id) + '">' + esc(state.lang === 'ar' ? 'أضف إلى السلة' : 'Add to cart') + '</button>' +
-      '<button type="button" class="btn btn-outline btn-wish" data-wishlist-toggle="' + esc(product.id) + '" aria-label="' + esc(state.lang === 'ar' ? 'حفظ في المفضلة' : 'Save to wishlist') + '" aria-pressed="' + saved + '">' + (saved ? '♥' : '♡') + '</button>' +
-      '</div>' +
-      '</div>' +
-      '</article>';
-  }
-
-  function renderCatalogue() {
-    if (!refs.catalogueGrid) return;
-    var filtered = state.activeCategory === 'all' ? PRODUCTS : PRODUCTS.filter(function (product) {
-      return product.category === state.activeCategory;
-    });
-    refs.catalogueGrid.innerHTML = filtered.map(productCardHTML).join('');
-    $$('.product-img', refs.catalogueGrid).forEach(function (img) {
-      var product = PRODUCT_MAP.get(img.dataset.photoProduct);
-      if (product) observeProductPhoto(img, product, 0);
-    });
-    $$('[data-catalogue-count]').forEach(function (node) {
-      node.textContent = String(filtered.length);
-    });
-    renderFilters();
-  }
-
-  function setFilter(categoryId) {
-    if (categoryId !== 'all' && !CATEGORY_MAP.has(categoryId)) return;
-    state.activeCategory = categoryId;
-    renderCatalogue();
-  }
-
-  /* ------------------------------------------------------------------------
-     Badges, cart and wishlist
-     ------------------------------------------------------------------------ */
-
-  function updateBadges(bumpCart, bumpWishlist) {
-    var cartCount = cartQuantity();
-    var wishCount = state.wishlist.length;
-    $$('[data-cart-badge]').forEach(function (badge) {
-      badge.textContent = String(cartCount);
-      badge.classList.toggle('has-items', cartCount > 0);
-      if (bumpCart) {
-        badge.classList.remove('bump');
-        void badge.offsetWidth;
-        badge.classList.add('bump');
-      }
-    });
-    $$('[data-wish-badge]').forEach(function (badge) {
-      badge.textContent = String(wishCount);
-      badge.classList.toggle('has-items', wishCount > 0);
-      if (bumpWishlist) {
-        badge.classList.remove('bump');
-        void badge.offsetWidth;
-        badge.classList.add('bump');
-      }
-    });
-  }
-
-  function syncWishButtons() {
-    $$('[data-wishlist-toggle]').forEach(function (button) {
-      var id = button.dataset.wishlistToggle;
-      var saved = state.wishlist.indexOf(id) !== -1;
-      button.classList.toggle('saved', saved);
-      button.setAttribute('aria-pressed', saved ? 'true' : 'false');
-      button.textContent = saved ? '♥' : '♡';
-    });
-    if (state.currentProductId) {
-      var product = PRODUCT_MAP.get(state.currentProductId);
-      var wishButton = refs.modalWishlist;
-      if (product && wishButton) {
-        var inWishlist = state.wishlist.indexOf(product.id) !== -1;
-        wishButton.classList.toggle('saved', inWishlist);
-        wishButton.setAttribute('aria-pressed', inWishlist ? 'true' : 'false');
-        wishButton.textContent = inWishlist ? '♥' : '♡';
-      }
-    }
-  }
-
-  function updateAccountLabel() {
-    var account = currentAccount();
-    var label = account ? account.name.trim().split(/\s+/)[0] : t('signin_label');
-    $$('[data-account-label]').forEach(function (node) {
-      node.textContent = label;
-    });
-  }
-
-  function addToCart(productId, qty, options) {
-    var product = PRODUCT_MAP.get(productId);
-    if (!product) return;
-    var amount = Math.max(1, parseInt(qty, 10) || 1);
-    var existing = state.cart.find(function (entry) { return entry.id === productId; });
-    if (existing) {
-      if (existing.qty >= MAX_QTY) {
-        showToast(t('max_qty', { n: MAX_QTY }));
-        return;
-      }
-      existing.qty = Math.min(MAX_QTY, existing.qty + amount);
-    } else {
-      state.cart.push({ id: productId, qty: Math.min(MAX_QTY, amount) });
-    }
-    saveCart();
-    renderCart();
-    updateBadges(true, false);
-    trackPixel('AddToCart', {
-      content_ids: [product.id],
-      content_name: product.titleEn,
-      content_type: 'product',
-      value: product.priceEgp * amount,
-      currency: 'EGP',
-      num_items: amount
-    });
-    showToast(t('added', { name: productTitle(product) }));
-    if (!options || options.open !== false) openCart();
-  }
-
-  function setCartQty(productId, qty) {
-    var entry = state.cart.find(function (item) { return item.id === productId; });
-    if (!entry) return;
-    var amount = parseInt(qty, 10) || 0;
-    if (amount <= 0) {
-      removeCartItem(productId);
-      return;
-    }
-    entry.qty = Math.min(MAX_QTY, Math.max(1, amount));
-    saveCart();
-    renderCart();
-    updateBadges(false, false);
-  }
-
-  function removeCartItem(productId, silent) {
-    var product = PRODUCT_MAP.get(productId);
-    state.cart = state.cart.filter(function (entry) { return entry.id !== productId; });
-    saveCart();
-    renderCart();
-    updateBadges(false, false);
-    if (!silent) showToast(product ? t('removed') : t('removed'));
-  }
-
-  function toggleWishlist(productId, sourceButton) {
-    var product = PRODUCT_MAP.get(productId);
-    if (!product) return;
-    var index = state.wishlist.indexOf(productId);
-    var added = index === -1;
-    if (added) state.wishlist.push(productId);
-    else state.wishlist.splice(index, 1);
-    saveWishlist();
-    updateBadges(false, true);
-    syncWishButtons();
-    if (refs.wishlistDrawer && refs.wishlistDrawer.classList.contains('open')) renderWishlist();
-    if (state.sessionId) renderProfile();
-    if (sourceButton) {
-      sourceButton.classList.remove('pop');
-      void sourceButton.offsetWidth;
-      sourceButton.classList.add('pop');
-    }
-    showToast(added ? t('wish_added', { name: productTitle(product) }) : t('wish_removed', { name: productTitle(product) }));
-  }
-
-  function cartItemHTML(entry) {
-    var product = entry.product;
-    return '<article class="drawer-item" data-cart-item="' + esc(product.id) + '">' +
-      '<div class="drawer-item-img"><img alt="' + esc(productTitle(product)) + '" width="160" height="160" loading="lazy" decoding="async" data-cart-photo="' + esc(product.id) + '"></div>' +
-      '<div class="drawer-item-main">' +
-      '<div class="drawer-item-title">' + esc(productTitle(product)) + '</div>' +
-      '<div class="drawer-item-meta">' + esc(product.code) + ' · ' + esc(product.dimensions) + '</div>' +
-      '<div class="drawer-item-price">' + money(entry.lineTotal) + '</div>' +
-      '<div class="drawer-item-controls">' +
-      '<div class="qty-control">' +
-      '<button type="button" class="qty-btn" data-cart-dec="' + esc(product.id) + '" aria-label="' + esc(state.lang === 'ar' ? 'تقليل الكمية' : 'Decrease quantity') + '">−</button>' +
-      '<span class="qty-value">' + entry.qty + '</span>' +
-      '<button type="button" class="qty-btn" data-cart-inc="' + esc(product.id) + '" aria-label="' + esc(state.lang === 'ar' ? 'زيادة الكمية' : 'Increase quantity') + '">+</button>' +
-      '</div>' +
-      '<button type="button" class="remove-link" data-cart-remove="' + esc(product.id) + '">' + esc(state.lang === 'ar' ? 'إزالة' : 'Remove') + '</button>' +
-      '</div>' +
-      '</div>' +
-      '</article>';
-  }
-
-  function syncCheckoutAccountNote() {
-    if (!refs.checkoutAccountNote) return;
-    var account = currentAccount();
-    refs.checkoutAccountNote.classList.toggle('is-guest', !account);
-    refs.checkoutAccountNote.textContent = account
-      ? t('signed_in_as', { name: account.name })
-      : t('guest_note');
-  }
-
-  function renderCart() {
-    var details = cartDetails();
-    var empty = details.length === 0;
-    var subtotal = cartSubtotal();
-    var delivery = deliveryFee();
-    var total = cartTotal();
-
-    if (refs.cartHeadMeta) refs.cartHeadMeta.textContent = t('cart_meta', { count: itemCountText(cartQuantity()) });
-    if (refs.cartItemsCount) refs.cartItemsCount.textContent = itemCountText(cartQuantity());
-    if (refs.cartItems) {
-      refs.cartItems.innerHTML = details.map(cartItemHTML).join('');
-      $$('[data-cart-photo]', refs.cartItems).forEach(function (img) {
-        var product = PRODUCT_MAP.get(img.dataset.cartPhoto);
-        if (product) applyProductPhoto(img, product, 0);
-      });
-    }
-    if (refs.cartItemsSection) refs.cartItemsSection.hidden = empty;
-    if (refs.cartEmptyState) refs.cartEmptyState.hidden = !empty;
-    if (refs.checkoutForm) refs.checkoutForm.hidden = empty;
-    if (refs.cartFooter) refs.cartFooter.classList.toggle('is-empty', empty);
-    if (refs.flatRateBadge) refs.flatRateBadge.classList.toggle('show', !empty);
-    if (refs.confirmOrderBtn) refs.confirmOrderBtn.hidden = empty;
-    if (refs.summaryItems) refs.summaryItems.textContent = money(subtotal);
-    if (refs.summaryDelivery) refs.summaryDelivery.textContent = money(delivery);
-    if (refs.summaryTotal) refs.summaryTotal.textContent = money(total);
-    if (refs.checkoutSuccess) {
-      refs.checkoutSuccess.classList.remove('show');
-      refs.checkoutSuccess.textContent = '';
-    }
-    syncCheckoutAccountNote();
-    syncPaymentDetails();
-    updateBadges(false, false);
-  }
-
-  function wishlistItemHTML(product) {
-    return '<article class="drawer-item">' +
-      '<div class="drawer-item-img"><img alt="' + esc(productTitle(product)) + '" width="160" height="160" loading="lazy" decoding="async" data-wish-photo="' + esc(product.id) + '"></div>' +
-      '<div class="drawer-item-main">' +
-      '<div class="drawer-item-title">' + esc(productTitle(product)) + '</div>' +
-      '<div class="drawer-item-meta">' + esc(categoryName(product.category)) + ' · ' + esc(product.dimensions) + '</div>' +
-      '<div class="drawer-item-price">' + money(product.priceEgp) + '</div>' +
-      '<div class="drawer-item-controls">' +
-      '<button type="button" class="btn btn-primary btn-sm" data-wishlist-add="' + esc(product.id) + '">' + esc(state.lang === 'ar' ? 'أضف إلى السلة' : 'Add to cart') + '</button>' +
-      '<button type="button" class="remove-link" data-wishlist-remove="' + esc(product.id) + '">' + esc(state.lang === 'ar' ? 'إزالة' : 'Remove') + '</button>' +
-      '</div>' +
-      '</div>' +
-      '</article>';
-  }
-
-  function renderWishlist() {
-    if (!refs.wishlistItems) return;
-    var products = state.wishlist.map(function (id) { return PRODUCT_MAP.get(id); }).filter(Boolean);
-    if (refs.wishlistHeadMeta) refs.wishlistHeadMeta.textContent = t('wish_meta', { count: itemCountText(products.length) });
-    refs.wishlistItems.innerHTML = products.map(wishlistItemHTML).join('');
-    $$('[data-wish-photo]', refs.wishlistItems).forEach(function (img) {
-      var product = PRODUCT_MAP.get(img.dataset.wishPhoto);
-      if (product) observeProductPhoto(img, product, 0);
-    });
-    if (refs.wishlistEmptyState) refs.wishlistEmptyState.hidden = products.length > 0;
-    syncWishButtons();
-  }
-
-  function paymentValue() {
-    var selected = document.querySelector('input[name="paymentMethod"]:checked');
-    return selected ? selected.value : '';
-  }
-
-  function syncPaymentDetails() {
-    if (!refs.paymentDetailValue) return;
-    var method = paymentValue();
-    var handle = CFG.instapayHandle || 'nalam@instapay';
-    var wallet = CFG.walletNumber || CFG.phoneDisplay || '+20 11 32284750';
-    if (method === 'Mobile Wallet') {
-      refs.paymentDetailValue.textContent = wallet;
-      if (refs.paymentDetailNote) refs.paymentDetailNote.textContent = t('wallet_note');
-    } else {
-      refs.paymentDetailValue.textContent = handle;
-      if (refs.paymentDetailNote) {
-        refs.paymentDetailNote.textContent = state.lang === 'ar'
-          ? 'أرسل الإجمالي ثم شارك الإيصال على واتساب. نؤكد موعد التصنيع في نفس اليوم.'
-          : 'Send the total, then share the receipt on WhatsApp. We confirm your production slot the same day.';
-      }
-    }
-  }
-
-  function prefillCheckout() {
-    var account = currentAccount();
-    if (!account) return;
-    if (refs.checkoutName && !refs.checkoutName.value) refs.checkoutName.value = account.name || '';
-    if (refs.checkoutPhone && !refs.checkoutPhone.value) refs.checkoutPhone.value = account.phone || '';
-    if (refs.checkoutGov && !refs.checkoutGov.value && account.governorate) {
-      refs.checkoutGov.value = account.governorate;
-    }
-    if (refs.checkoutFloor && !refs.checkoutFloor.value && account.lastFloor != null) {
-      refs.checkoutFloor.value = String(account.lastFloor);
-    }
-  }
-
-  function showCheckoutSuccess(message) {
-    if (!refs.checkoutSuccess) return;
-    refs.checkoutSuccess.textContent = message;
-    refs.checkoutSuccess.classList.add('show');
-  }
-
-  /* ------------------------------------------------------------------------
-     Password hashing and account helpers
-     ------------------------------------------------------------------------ */
-
-  var SHA_K = [
-    0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
-    0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
-    0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
-    0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
-    0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
-    0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
-    0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
-    0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2
   ];
 
-  function rotateRight(value, amount) {
-    return (value >>> amount) | (value << (32 - amount));
-  }
+  const I18N = {
+    en: {
+      nav_showcase: 'Showcase',
+      nav_stages: 'Our Stages',
+      nav_catalogue: 'Catalogue',
+      nav_materials: 'Materials',
+      nav_payment: 'Payment',
+      nav_account: 'Account',
+      nav_contact: 'Contact',
+      nav_wa: 'WhatsApp',
+      nav_signin: 'Sign In',
+      lang_btn: 'عربي',
 
-  function sha256Fallback(message) {
-    var bytes = new TextEncoder().encode(message);
-    var bitLength = bytes.length * 8;
-    var total = (((bytes.length + 9 + 63) >> 6) << 6);
-    var padded = new Uint8Array(total);
-    padded.set(bytes);
-    padded[bytes.length] = 0x80;
-    var view = new DataView(padded.buffer);
-    view.setUint32(total - 4, bitLength >>> 0, false);
-    view.setUint32(total - 8, Math.floor(bitLength / 0x100000000), false);
-    var hash = [0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19];
-    var w = new Uint32Array(64);
-    for (var offset = 0; offset < total; offset += 64) {
-      var i;
-      for (i = 0; i < 16; i += 1) w[i] = view.getUint32(offset + i * 4, false);
-      for (i = 16; i < 64; i += 1) {
-        var s0 = rotateRight(w[i - 15], 7) ^ rotateRight(w[i - 15], 18) ^ (w[i - 15] >>> 3);
-        var s1 = rotateRight(w[i - 2], 17) ^ rotateRight(w[i - 2], 19) ^ (w[i - 2] >>> 10);
-        w[i] = (w[i - 16] + s0 + w[i - 7] + s1) >>> 0;
-      }
-      var a = hash[0], b = hash[1], c = hash[2], d = hash[3];
-      var e = hash[4], f = hash[5], g = hash[6], h = hash[7];
-      for (i = 0; i < 64; i += 1) {
-        var S1 = rotateRight(e, 6) ^ rotateRight(e, 11) ^ rotateRight(e, 25);
-        var ch = (e & f) ^ (~e & g);
-        var temp1 = (h + S1 + ch + SHA_K[i] + w[i]) >>> 0;
-        var S0 = rotateRight(a, 2) ^ rotateRight(a, 13) ^ rotateRight(a, 22);
-        var maj = (a & b) ^ (a & c) ^ (b & c);
-        var temp2 = (S0 + maj) >>> 0;
-        h = g;
-        g = f;
-        f = e;
-        e = (d + temp1) >>> 0;
-        d = c;
-        c = b;
-        b = a;
-        a = (temp1 + temp2) >>> 0;
-      }
-      hash[0] = (hash[0] + a) >>> 0;
-      hash[1] = (hash[1] + b) >>> 0;
-      hash[2] = (hash[2] + c) >>> 0;
-      hash[3] = (hash[3] + d) >>> 0;
-      hash[4] = (hash[4] + e) >>> 0;
-      hash[5] = (hash[5] + f) >>> 0;
-      hash[6] = (hash[6] + g) >>> 0;
-      hash[7] = (hash[7] + h) >>> 0;
-    }
-    return hash.map(function (word) { return word.toString(16).padStart(8, '0'); }).join('');
-  }
+      hero_eyebrow: 'NEW CAIRO ARCHITECTURAL SHOWROOM',
+      hero_title_1: 'Watch Space',
+      hero_title_em: 'Come Alive',
+      hero_cta_cat: 'Explore Sales Catalogue',
+      hero_cta_book: 'Book Showroom Visit',
+      hero_scroll_cue: 'Scroll to assemble each stage of the kitchen',
 
-  function sha256(text) {
-    if (window.crypto && window.crypto.subtle && typeof window.crypto.subtle.digest === 'function') {
-      return window.crypto.subtle.digest('SHA-256', new TextEncoder().encode(text)).then(function (buffer) {
-        return Array.prototype.map.call(new Uint8Array(buffer), function (byte) {
-          return byte.toString(16).padStart(2, '0');
-        }).join('');
-      }).catch(function () {
-        return sha256Fallback(text);
-      });
-    }
-    return Promise.resolve(sha256Fallback(text));
-  }
+      stages_eyebrow: 'THE NALAM CRAFT PROCESS',
+      stages_title: 'Three Disciplined Stages. Zero Guesswork.',
+      stages_sub: 'From photorealistic 3D layouts to raw factory precision and clean on-site installation—what you approve is exactly what we deliver.',
+      journey_1_title: '3D Modelling & Layout',
+      journey_1_desc: 'Designing spaces and creating possibilities with corner and straight layout studies before a single board is cut.',
+      journey_2_title: 'Pre-Finishing Stage',
+      journey_2_desc: 'Every great space starts long before the final touch—precision CNC joinery, raw carcass checks, and lighting integration in our workshop.',
+      journey_3_title: 'On-Site Installation',
+      journey_3_desc: 'Real spaces, real work, real results—installed by Nalam engineers with 5-year warranty and maintenance on request.',
 
-  function randomToken(length) {
-    var alphabet = 'abcdefghijklmnopqrstuvwxyz0123456789';
-    var output = '';
-    var values = null;
-    if (window.crypto && window.crypto.getRandomValues) {
-      values = new Uint8Array(length);
-      window.crypto.getRandomValues(values);
-    }
-    for (var index = 0; index < length; index += 1) {
-      var pick = values ? values[index] % alphabet.length : Math.floor(Math.random() * alphabet.length);
-      output += alphabet.charAt(pick);
-    }
-    return output;
-  }
+      spotlight_eyebrow: 'REAL DELIVERED PROJECT',
+      spotlight_title: 'Client Walkthrough & On-Site Finish',
+      spotlight_quote: '“I would like to thank the Nalam team and Eng. Islam for the design, execution, and finishing—truly outstanding and far better than I imagined, at a very competitive price.”',
+      spotlight_credit: '— Verified Nalam Kitchen Client, Cairo',
 
-  function createPasswordRecord(password) {
-    var salt = randomToken(24);
-    return sha256(salt + '::' + password).then(function (hash) {
-      return { salt: salt, hash: hash };
-    });
-  }
+      cat_eyebrow: 'SALES CATALOGUE — 9 CATEGORIES',
+      cat_title: 'Bespoke Furniture & Cabinetry',
+      cat_sub: 'Browse all nine custom categories with transparent EGP pricing. Add pieces to your cart or wishlist, inspect multiple angles, and check out via InstaPay or Mobile Wallet.',
+      cat_starting: 'Price',
+      cat_view_btn: 'Details',
+      cat_add_cart: 'Add to Cart',
+      cat_add_wish: 'Wishlist',
+      cat_saved_wish: 'Saved',
+      cat_angles_suffix: 'Angles',
 
-  function verifyPassword(account, password) {
-    return sha256((account.passwordSalt || '') + '::' + password).then(function (hash) {
-      return hash === account.passwordHash;
-    });
-  }
+      mat_eyebrow: 'ENGINEERING & HARDWARE',
+      mat_title: 'Dedicated Materials for Kitchens & Rooms',
+      mat_sub: 'Every Nalam piece is built with purpose-selected boards—starting with renowned Good Wood / Top Wood kitchen carcasses and warp-resistant precision blockboard for bedrooms and dressing rooms.',
+      mat_scope_kitchen: 'For Kitchens',
+      mat_scope_rooms: 'For Bedrooms & Dressing',
+      mat_scope_wet: 'Sink & WC Units',
+      mat_scope_hw: 'Motion Hardware',
+      mat_1_title: 'Good Wood / Top Wood',
+      mat_1_desc: 'White HPL kitchen bodies crafted using the renowned Good Wood and Top Wood boards—engineered for superior screw-holding strength, heat resilience, and daily kitchen durability.',
+      mat_2_title: '16mm Warp-Resistant Blockboard',
+      mat_2_desc: 'Dedicated for bedrooms, dressing rooms, vanities & cabinets: 16mm melamine-faced blockboard precision-joined with minimal gaps for lasting straightness.',
+      mat_3_title: '100% Waterproof Boardium',
+      mat_3_desc: 'High-density 100% water-resistant Boardium engineered for kitchen sink bases and all WC vanity units to prevent moisture swelling.',
+      mat_4_title: 'Turkish SAMET Hinges',
+      mat_4_desc: 'Original Turkish SAMET soft-close hydraulic hinges engineered for silent, effortless door closing across tens of thousands of cycles.',
+      mat_5_title: 'Italian FGV Runners',
+      mat_5_desc: 'Concealed Italian FGV undermount soft-close drawer runners delivering smooth full-extension glide under heavy daily loads.',
+      war_1_t: 'Professional Installation',
+      war_1_s: 'Precision alignment by Nalam site engineers',
+      war_2_t: '5-Year Warranty',
+      war_2_s: 'Full structural & hardware peace of mind',
+      war_3_t: 'Maintenance on Request',
+      war_3_s: 'Dedicated after-sales service whenever you need it',
 
-  /* ------------------------------------------------------------------------
-     Validation
-     ------------------------------------------------------------------------ */
+      contact_eyebrow: 'NEW CAIRO SHOWROOM & CONSULTATIONS',
+      contact_title: 'Bring Your Space to Life',
+      contact_sub: 'Visit our New Cairo showroom or send your project specs directly to our WhatsApp design desk for a tailored quotation.',
+      lbl_location: 'Showroom Location',
+      lbl_phone: 'Phone & WhatsApp',
+      lbl_hours: 'Showroom Hours',
+      lbl_social: 'Instagram',
+      btn_maps: 'Open in Google Maps',
+      btn_copy_map: 'Copy Maps Link',
+      btn_wa_direct: 'Chat on WhatsApp',
 
-  function normalizePhone(value) {
-    var digits = String(value || '').replace(/[^\d+]/g, '');
-    if (digits.indexOf('+20') === 0) digits = '0' + digits.slice(3);
-    else if (digits.indexOf('20') === 0 && digits.length === 12) digits = '0' + digits.slice(2);
-    else if (digits.indexOf('0020') === 0) digits = '0' + digits.slice(4);
-    return digits;
-  }
+      form_name: 'Full Name',
+      form_name_ph: 'e.g. Ahmed Hassan',
+      form_phone: 'Phone / WhatsApp Number',
+      form_phone_ph: '01X XXXX XXXX',
+      form_category: 'Interested Category',
+      form_area: 'Compound / Delivery Area',
+      form_area_ph: 'e.g. New Cairo, Fifth Settlement, Rehab',
+      form_notes: 'Dimensions or Project Notes',
+      form_notes_ph: 'Share rough dimensions, preferred finish, or showroom visit time...',
+      form_submit: 'Send Inquiry via WhatsApp',
 
-  function isEgyptianPhone(value) {
-    return /^01[0125]\d{8}$/.test(normalizePhone(value));
-  }
+      modal_dims: 'Dimensions:',
+      modal_mat: 'Materials:',
+      modal_hw: 'Hardware:',
+      modal_fin: 'Featured Finish:',
+      modal_order_title: 'Quick Reserve via InstaPay or Mobile Wallet',
+      modal_instapay_lbl: 'InstaPay Address:',
+      modal_copy: 'Copy',
+      modal_copied: 'Copied!',
+      modal_cust_name: 'Your Full Name',
+      modal_cust_area: 'Delivery Area (e.g. New Cairo)',
+      modal_pay_instapay: 'InstaPay (Instant Bank Transfer)',
+      modal_pay_wallet: 'Mobile Wallet (Vodafone / Orange / Etisalat Cash)',
+      modal_order_btn: 'Reserve Directly via WhatsApp',
+      modal_no_card: 'Zero credit card gateways — fast confirmation directly with Nalam sales on WhatsApp.',
 
-  function isEmail(value) {
-    return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(String(value || '').trim());
-  }
+      auth_welcome: 'Welcome to Nalam',
+      auth_signin_tab: 'Sign In',
+      auth_signup_tab: 'Create Account',
+      auth_perk_1: 'Saved Cart & Wishlist',
+      auth_perk_2: 'Payment & Engineer Chat',
+      auth_perk_3: 'Custom Avatar & Profile',
+      auth_profile_title: 'My Nalam Account',
+      auth_first_name: 'First Name *',
+      auth_last_name: 'Last Name *',
+      auth_name_err: 'First and Last Name must contain only Arabic, English, European, or Turkish letters (no numbers or symbols).',
+      auth_email: 'Email Address *',
+      auth_email_invalid: 'Please enter a valid email address.',
+      auth_verify_btn: 'Verify Email',
+      auth_verified_lbl: 'Verified ✓',
+      auth_verify_code_ph: 'Enter 6-digit code',
+      auth_verify_confirm: 'Confirm Code',
+      auth_verify_required: 'Please verify your email address before creating your account.',
+      auth_verify_wrong: 'Incorrect verification code. Please check the code shown above.',
+      auth_terms_prefix: 'I agree to Nalam’s ',
+      auth_terms_link: 'Terms & Services',
+      auth_terms_required: 'You must accept the Terms & Services to create an account.',
+      auth_password: 'Password',
+      auth_show: 'Show',
+      auth_hide: 'Hide',
+      auth_forgot: 'Forgot password?',
+      auth_forgot_toast: 'Contact Nalam on WhatsApp (+20 11 32284750) or create a new account with a different email.',
+      auth_phone: 'Phone / WhatsApp *',
+      auth_gov: 'Governorate',
+      auth_gov_cairo: 'Cairo Governorate',
+      auth_gov_giza: 'Giza Governorate',
+      auth_gov_other: 'Other',
+      auth_address: 'Delivery Area / Street Address',
+      auth_floor: 'Building Floor Level',
+      auth_signin_btn: 'Sign In to Nalam',
+      auth_signup_btn: 'Create My Nalam Account',
+      auth_save_profile: 'Save Account Details',
+      auth_open_hub: 'Open Full Account Hub',
+      auth_signout_btn: 'Sign Out',
+      auth_need_account: 'Sign in or create a Nalam account to manage your profile, avatar, and payment tracking.',
+      auth_invalid: 'Invalid email or password. Please double-check or create a new account.',
+      auth_exists: 'An account with this email already exists. Please sign in instead.',
 
-  function isName(value) {
-    return String(value || '').trim().length >= 2;
-  }
+      cart_title: 'Your Shopping Cart',
+      cart_trust: '5-Year Warranty • Flat-Rate Cairo & Giza Delivery • Direct WhatsApp Confirmation',
+      cart_empty: 'Your cart is currently empty. Add pieces from the catalogue to start your order.',
+      cart_empty_delivery_note: 'Flat-rate 5,000 EGP delivery & professional installation across anywhere in Cairo & Giza (up to 2nd floor) applies to any order size, whether single pieces or full rooms.',
+      cart_flat_badge: 'Flat-Rate Delivery: Same 5,000 EGP fee whether you order 1 item or a full room.',
+      wish_title: 'Your Wishlist',
+      wish_empty: 'Your wishlist is empty. Save your favorite pieces to review or move to cart anytime.',
+      move_to_cart: 'Move to Cart',
+      remove_lbl: 'Remove',
+      checkout_details_title: 'Customer & Delivery Details',
+      checkout_name_lbl: 'Customer Name *',
+      checkout_name_ph: 'Full Name',
+      checkout_phone_lbl: 'Phone / WhatsApp *',
+      checkout_phone_ph: '01X XXXX XXXX',
+      checkout_gov_lbl: 'Governorate *',
+      checkout_floor_lbl: 'Floor Number *',
+      checkout_area_lbl: 'Compound / Street Address (Optional)',
+      checkout_area_ph: 'e.g. Fifth Settlement, Madinaty, Sheikh Zayed',
+      checkout_pay_title: 'Payment Method *',
+      pay_instapay_title: 'InstaPay',
+      pay_instapay_sub: 'Instant Bank Transfer',
+      pay_wallet_title: 'Mobile Wallet',
+      pay_wallet_sub: 'Vodafone / Orange / Etisalat',
+      subtotal_lbl: 'Items Subtotal',
+      delivery_lbl: 'Delivery',
+      delivery_base_lbl: 'Flat-Rate Delivery (Cairo & Giza, up to 2nd floor)',
+      delivery_floor_lbl: 'Higher Floor Delivery Fee',
+      delivery_floor_included: 'Included (Up to 2nd Floor)',
+      delivery_floor_calc: 'To be calculated upon confirmation',
+      grand_total_lbl: 'Estimated Total',
+      checkout_btn: 'Confirm Order & Send via WhatsApp',
+      checkout_open_pay_hub: 'Open Payment & Tracking Page',
+      checkout_err_required: 'Please enter your Name and valid Phone Number to confirm your order.',
 
-  function isStrongPassword(value) {
-    var text = String(value || '');
-    return text.length >= 8 && /[A-Za-z]/.test(text) && /\d/.test(text);
-  }
+      footer_desc: 'Bespoke luxury kitchens, dressing rooms, and architectural cabinetry crafted in New Cairo with certified materials and 5-year warranty.',
+      footer_nav_title: 'Explore',
+      footer_contact_title: 'Showroom & Direct',
+      footer_contact_page: 'Contact Us',
 
-  function setFieldError(fieldId, message) {
-    var errorNode = document.querySelector('[data-error-for="' + fieldId + '"]');
-    if (errorNode) {
-      errorNode.textContent = message;
-      errorNode.classList.add('show');
-    }
-    var field = document.getElementById(fieldId);
-    if (field) field.classList.add('invalid');
-    if (fieldId === 'paymentMethod') {
-      $$('.payment-card').forEach(function (card) { card.classList.add('invalid'); });
-    }
-  }
+      contact_page_title: 'Visit Our New Cairo Showroom',
+      contact_page_sub: 'Book a private material consultation, explore Good Wood, 16mm Blockboard, Boardium, SAMET, and FGV samples in person, or send your dimensions for a fast quotation.',
+      back_home: 'Back to Home'
+    },
+    ar: {
+      nav_showcase: 'العرض التفاعلي',
+      nav_stages: 'مراحل التنفيذ',
+      nav_catalogue: 'الكتالوج',
+      nav_materials: 'الخامات والإكسسوارات',
+      nav_payment: 'الدفع والمتابعة',
+      nav_account: 'حسابي',
+      nav_contact: 'تواصل معنا',
+      nav_wa: 'واتساب',
+      nav_signin: 'تسجيل الدخول',
+      lang_btn: 'EN',
 
-  function clearFieldError(fieldId) {
-    var errorNode = document.querySelector('[data-error-for="' + fieldId + '"]');
-    if (errorNode) {
-      errorNode.textContent = '';
-      errorNode.classList.remove('show');
-    }
-    var field = document.getElementById(fieldId);
-    if (field) field.classList.remove('invalid');
-    if (fieldId === 'paymentMethod') {
-      $$('.payment-card').forEach(function (card) { card.classList.remove('invalid'); });
-    }
-  }
+      hero_eyebrow: 'معرض نالام — القاهرة الجديدة',
+      hero_title_1: 'شاهد مساحتك',
+      hero_title_em: 'تنطق بالفخامة',
+      hero_cta_cat: 'تصفح كتالوج البيع',
+      hero_cta_book: 'احجز زيارة المعرض',
+      hero_scroll_cue: 'مرّر للأسفل لمشاهدة مراحل تجميع المطبخ',
 
-  function clearFormErrors(form) {
-    if (!form) return;
-    $$('.invalid', form).forEach(function (node) { node.classList.remove('invalid'); });
-    $$('.field-error', form).forEach(function (node) {
-      node.textContent = '';
-      node.classList.remove('show');
-    });
-  }
+      stages_eyebrow: 'منهجية التنفيذ في نالام',
+      stages_title: 'ثلاث مراحل دقيقة. نتيجة مضمونة.',
+      stages_sub: 'من التصميم ثلاثي الأبعاد الواقعي إلى مرحلة ما قبل التشطيب داخل المصنع وحتى التركيب النهائي في موقعك.',
+      journey_1_title: 'التصميم ثلاثي الأبعاد (3D)',
+      journey_1_desc: 'رسم وتخطيط دقيق لكل زاوية ببدائل توزيع متعددة لتشاهد مطبخك بواقعية قبل بدء التصنيع.',
+      journey_2_title: 'مرحلة ما قبل التشطيب',
+      journey_2_desc: 'فحص دقيق للخامات والتقفيل والنجارة وتجهيز الإضاءة المخفية قبل الدهان والتشطيب النهائي.',
+      journey_3_title: 'التنفيذ والتركيب بالموقع',
+      journey_3_desc: 'تركيب احترافي على يد مهندسي نالام مع ضمان 5 سنوات وصيانة عند الطلب.',
 
-  function focusField(fieldId) {
-    var field = document.getElementById(fieldId);
-    if (field && typeof field.focus === 'function') {
-      field.focus({ preventScroll: true });
-      field.scrollIntoView({ behavior: REDUCED_MOTION ? 'auto' : 'smooth', block: 'center' });
-    }
-  }
+      spotlight_eyebrow: 'مشروع منفذ على أرض الواقع',
+      spotlight_title: 'جولة حقيقية ورأي عميل نالام',
+      spotlight_quote: '«حابب أشكر فريق نالام وبشمهندس إسلام الصراحة على التنفيذ والتصميم والتشطيب؛ كانوا ممتازين جداً والنتيجة كانت أفضل بكتير مما كنت أتخيل وبسعر منافس جداً.»',
+      spotlight_credit: '— عميل نالام للمطابخ، القاهرة',
 
-  function validateAccountDetails(prefix) {
-    var map = {
-      name: prefix + 'Name',
-      phone: prefix + 'Phone',
-      email: prefix + 'Email',
-      password: prefix + 'Password'
-    };
-    var valid = true;
-    var nameField = document.getElementById(map.name);
-    var phoneField = document.getElementById(map.phone);
-    var emailField = document.getElementById(map.email);
-    var passwordField = document.getElementById(map.password);
-    if (nameField && !isName(nameField.value)) {
-      setFieldError(map.name, t('err_name'));
-      valid = false;
-    }
-    if (phoneField && !isEgyptianPhone(phoneField.value)) {
-      setFieldError(map.phone, t('err_phone'));
-      valid = false;
-    }
-    if (emailField && !isEmail(emailField.value)) {
-      setFieldError(map.email, t('err_email'));
-      valid = false;
-    }
-    if (passwordField && !isStrongPassword(passwordField.value)) {
-      setFieldError(map.password, t('err_password'));
-      valid = false;
-    }
-    return valid;
-  }
+      cat_eyebrow: 'كتالوج البيع — 9 أقسام رئيسية',
+      cat_title: 'أثاث ومطابخ ووحدات حسب الطلب',
+      cat_sub: 'تصفح الأقسام التسعة بأسعار واضحة بالجنيه المصري. أضف القطع إلى السلة أو المفضلة وشاهد الزوايا المتعددة وأتمم الطلب عبر إنستاباي أو المحفظة الإلكترونية.',
+      cat_starting: 'السعر',
+      cat_view_btn: 'التفاصيل',
+      cat_add_cart: 'أضف للسلة',
+      cat_add_wish: 'المفضلة',
+      cat_saved_wish: 'بالمفضلة',
+      cat_angles_suffix: 'زوايا',
 
-  function validateCheckout() {
-    var valid = true;
-    var name = refs.checkoutName ? refs.checkoutName.value.trim() : '';
-    var phone = refs.checkoutPhone ? refs.checkoutPhone.value : '';
-    var gov = refs.checkoutGov ? refs.checkoutGov.value : '';
-    var floor = refs.checkoutFloor ? refs.checkoutFloor.value : '';
-    var payment = paymentValue();
-    if (!isName(name)) {
-      setFieldError('checkoutName', t('err_name'));
-      valid = false;
-    }
-    if (!isEgyptianPhone(phone)) {
-      setFieldError('checkoutPhone', t('err_phone'));
-      valid = false;
-    }
-    if (!gov) {
-      setFieldError('checkoutGov', t('err_required'));
-      valid = false;
-    }
-    if (floor === '') {
-      setFieldError('checkoutFloor', t('err_floor'));
-      valid = false;
-    }
-    if (!payment) {
-      setFieldError('paymentMethod', t('err_payment'));
-      valid = false;
-    }
-    if (!valid) {
-      var firstInvalid = refs.checkoutForm ? $('.invalid', refs.checkoutForm) : null;
-      if (firstInvalid) {
-        firstInvalid.scrollIntoView({ behavior: REDUCED_MOTION ? 'auto' : 'smooth', block: 'center' });
-        if (typeof firstInvalid.focus === 'function') firstInvalid.focus({ preventScroll: true });
-      }
-    }
-    return valid;
-  }
+      mat_eyebrow: 'الخامات والإكسسوارات المعتمدة',
+      mat_title: 'خامات مخصصة للمطابخ والغرف',
+      mat_sub: 'نختار في نالام الخامة الهندسية الأنسب لكل فراغ: بدءاً من علب مطابخ جود وود / توب وود الشهيرة وخامات غرف النوم والدريسينج المقاومة للتقوس.',
+      mat_scope_kitchen: 'للمطابخ',
+      mat_scope_rooms: 'لغرف النوم والدريسينج',
+      mat_scope_wet: 'الحوض والحمام',
+      mat_scope_hw: 'إكسسوارات الحركة',
+      mat_1_title: 'جود وود / توب وود',
+      mat_1_desc: 'علب مطابخ HPL أبيض مصنعة بدقة من ألواح جود وود / توب وود الشهيرة — لثبات فائق للمسامير وتحمّل عالٍ للحرارة والاستخدام اليومي.',
+      mat_2_title: 'كونتر ميلامين مقاوم للتقوس 16 مم',
+      mat_2_desc: 'مخصص لغرف النوم والدريسينج والتسريحات والجزامات: كونتر ميلامين 16 مم مقاوم للتقوس بتقفيل دقيق وأقل فراغات ممكنة.',
+      mat_3_title: 'بورديوم مقاوم للمياه 100%',
+      mat_3_desc: 'خامة بورديوم معتمدة ومقاومة للمياه والرطوبة بنسبة 100% مخصصة لوحدات الحوض ووحدات الحمامات.',
+      mat_4_title: 'مفصلات SAMET تركي',
+      mat_4_desc: 'مفصلات SAMET تركية أصلية بنظام إغلاق هادئ (Soft Close) لأداء سلس وصامت يدوم لعشرات الآلاف من مرات الاستخدام.',
+      mat_5_title: 'مجر سفلية FGV إيطالي',
+      mat_5_desc: 'مجر أدراج سفلية مخفية من FGV الإيطالية بإغلاق هادئ وتحمّل عالٍ لأثقل أواني المطبخ والملابس.',
+      war_1_t: 'تركيب احترافي',
+      war_1_s: 'تقفيل وضبط دقيق بواسطة مهندسي نالام',
+      war_2_t: 'ضمان 5 سنوات',
+      war_2_s: 'ضمان شامل على الهيكل والإكسسوارات',
+      war_3_t: 'صيانة عند الطلب',
+      war_3_s: 'خدمة ما بعد البيع متوفرة لك وقت الحاجة',
 
-  /* ------------------------------------------------------------------------
-     Account interface
-     ------------------------------------------------------------------------ */
+      contact_eyebrow: 'معرض القاهرة الجديدة والاستشارات',
+      contact_title: 'ابدأ تصميم مساحتك الآن',
+      contact_sub: 'شرفنا بزيارة معرض نالام في القاهرة الجديدة أو أرسل تفاصيل مشروعك مباشرة إلى واتساب فريق التصميم.',
+      lbl_location: 'موقع المعرض',
+      lbl_phone: 'الهاتف والواتساب',
+      lbl_hours: 'مواعيد العمل',
+      lbl_social: 'إنستجرام',
+      btn_maps: 'فتح في خرائط جوجل',
+      btn_copy_map: 'نسخ رابط الموقع',
+      btn_wa_direct: 'تحدث عبر واتساب',
 
-  function showAuthBanner(message, isError) {
-    if (!refs.authBanner) return;
-    refs.authBanner.textContent = message || '';
-    refs.authBanner.classList.toggle('show', !!message);
-    refs.authBanner.classList.toggle('error', !!isError);
-  }
+      form_name: 'الاسم الكامل',
+      form_name_ph: 'مثال: أحمد حسن',
+      form_phone: 'رقم الهاتف / الواتساب',
+      form_phone_ph: '01X XXXX XXXX',
+      form_category: 'القسم المطلوب',
+      form_area: 'المنطقة / الكمبوند',
+      form_area_ph: 'مثال: القاهرة الجديدة، التجمع الخامس، الرحاب',
+      form_notes: 'المقاسات أو تفاصيل المشروع',
+      form_notes_ph: 'اكتب المقاسات التقريبية أو موعد زيارة المعرض المفضل...',
+      form_submit: 'إرسال الاستفسار عبر واتساب',
 
-  function updateAuthHeading() {
-    if (!refs.authTitle || !refs.authSubtitle) return;
-    var signup = state.authMode === 'signup';
-    refs.authTitle.textContent = signup ? t('auth_title_signup') : t('auth_title_signin');
-    refs.authSubtitle.textContent = signup ? t('auth_subtitle_signup') : t('auth_subtitle_signin');
-  }
+      modal_dims: 'الأبعاد:',
+      modal_mat: 'الخامات:',
+      modal_hw: 'الإكسسوارات:',
+      modal_fin: 'التشطيب المقترح:',
+      modal_order_title: 'حجز سريع عبر إنستاباي أو المحفظة الإلكترونية',
+      modal_instapay_lbl: 'حساب إنستاباي:',
+      modal_copy: 'نسخ',
+      modal_copied: 'تم النسخ!',
+      modal_cust_name: 'الاسم الكامل',
+      modal_cust_area: 'منطقة التوصيل (مثال: القاهرة الجديدة)',
+      modal_pay_instapay: 'إنستاباي (تحويل بنكي فوري)',
+      modal_pay_wallet: 'محفظة إلكترونية (فودافون / أورانج / اتصالات كاش)',
+      modal_order_btn: 'تأكيد الحجز عبر واتساب',
+      modal_no_card: 'بدون بوابات بطاقات ائتمان — تأكيد فوري ومباشر مع مبيعات نالام عبر واتساب.',
 
-  function switchAuthTab(mode, focus) {
-    state.authMode = mode === 'signup' ? 'signup' : 'signin';
-    var signup = state.authMode === 'signup';
-    if (refs.signInTab) {
-      refs.signInTab.classList.toggle('active', !signup);
-      refs.signInTab.setAttribute('aria-selected', signup ? 'false' : 'true');
-    }
-    if (refs.signUpTab) {
-      refs.signUpTab.classList.toggle('active', signup);
-      refs.signUpTab.setAttribute('aria-selected', signup ? 'true' : 'false');
-    }
-    if (refs.signInForm) refs.signInForm.hidden = signup;
-    if (refs.signUpForm) refs.signUpForm.hidden = !signup;
-    clearFormErrors(signup ? refs.signUpForm : refs.signInForm);
-    showAuthBanner('');
-    updateAuthHeading();
-    if (focus) {
-      var target = signup ? refs.signUpName : refs.signInEmail;
-      if (target) window.setTimeout(function () { target.focus({ preventScroll: true }); }, 80);
-    }
-  }
+      auth_welcome: 'مرحباً بك في نالام',
+      auth_signin_tab: 'تسجيل الدخول',
+      auth_signup_tab: 'إنشاء حساب جديد',
+      auth_perk_1: 'حفظ السلة والمفضلة',
+      auth_perk_2: 'متابعة الدفع ومراسلة الإدارة',
+      auth_perk_3: 'صورة شخصية وملف متكامل',
+      auth_profile_title: 'حسابي في نالام',
+      auth_first_name: 'الاسم الأول *',
+      auth_last_name: 'الاسم الأخير *',
+      auth_name_err: 'يجب أن يحتوي الاسم الأول والأخير على حروف عربية أو إنجليزية أو أوروبية أو تركية فقط (بدون أرقام أو رموز).',
+      auth_email: 'البريد الإلكتروني *',
+      auth_email_invalid: 'يرجى إدخال بريد إلكتروني صحيح.',
+      auth_verify_btn: 'تأكيد البريد',
+      auth_verified_lbl: 'تم التحقق ✓',
+      auth_verify_code_ph: 'أدخل الرمز المكون من 6 أرقام',
+      auth_verify_confirm: 'تحقق من الرمز',
+      auth_verify_required: 'يرجى التحقق من بريدك الإلكتروني أولاً قبل إتمام التسجيل.',
+      auth_verify_wrong: 'رمز التحقق غير صحيح. يرجى مراجعة الرمز المعروض أعلاه.',
+      auth_terms_prefix: 'أوافق على ',
+      auth_terms_link: 'الشروط والأحكام',
+      auth_terms_required: 'يجب الموافقة على الشروط والأحكام لإنشاء الحساب.',
+      auth_password: 'كلمة المرور',
+      auth_show: 'إظهار',
+      auth_hide: 'إخفاء',
+      auth_forgot: 'نسيت كلمة المرور؟',
+      auth_forgot_toast: 'تواصل معنا عبر واتساب (+20 11 32284750) أو أنشئ حساباً جديداً ببريد آخر.',
+      auth_phone: 'رقم الهاتف / الواتساب *',
+      auth_gov: 'المحافظة',
+      auth_gov_cairo: 'محافظة القاهرة',
+      auth_gov_giza: 'محافظة الجيزة',
+      auth_gov_other: 'أخرى',
+      auth_address: 'منطقة التوصيل / العنوان التفصيلي',
+      auth_floor: 'رقم الدور (الطابق)',
+      auth_signin_btn: 'تسجيل الدخول إلى نالام',
+      auth_signup_btn: 'إنشاء حساب نالام',
+      auth_save_profile: 'حفظ بيانات الحساب',
+      auth_open_hub: 'فتح صفحة الحساب الكاملة',
+      auth_signout_btn: 'تسجيل الخروج',
+      auth_need_account: 'سجل الدخول أو أنشئ حساب نالام لإدارة ملفك وصورتك الشخصية ومتابعة الدفع.',
+      auth_invalid: 'البريد الإلكتروني أو كلمة المرور غير صحيحة. حاول مرة أخرى أو أنشئ حساباً جديداً.',
+      auth_exists: 'يوجد حساب مسجل بهذا البريد بالفعل. يرجى تسجيل الدخول.',
 
-  function renderProfile() {
-    var account = currentAccount();
-    if (!account) return;
-    if (refs.profileName) refs.profileName.textContent = account.name;
-    if (refs.profileEmail) refs.profileEmail.textContent = account.email;
-    if (refs.profileAvatar) {
-      refs.profileAvatar.textContent = (account.name || 'N').trim().charAt(0).toUpperCase();
-    }
-    var orders = Array.isArray(account.orders) ? account.orders : [];
-    if (refs.profileOrdersCount) refs.profileOrdersCount.textContent = String(orders.length);
-    if (refs.profileWishCount) refs.profileWishCount.textContent = String(state.wishlist.length);
-    if (refs.profileCartCount) refs.profileCartCount.textContent = String(cartQuantity());
-    if (refs.profileOrdersList) {
-      if (!orders.length) {
-        refs.profileOrdersList.innerHTML = '<div class="profile-empty">' + esc(t('no_orders')) + '</div>';
-      } else {
-        refs.profileOrdersList.innerHTML = orders.slice(0, 3).map(function (order) {
-          return '<div class="order-mini">' +
-            '<div><strong>#' + esc(order.id) + '</strong><br><span>' + esc(formatDate(order.createdAt)) + '</span></div>' +
-            '<span>' + money(order.total) + '</span>' +
-            '</div>';
-        }).join('');
-      }
-    }
-  }
+      cart_title: 'سلة المشتريات',
+      cart_trust: 'ضمان 5 سنوات • توصيل ثابت للقاهرة والجيزة • تأكيد مباشر عبر واتساب',
+      cart_empty: 'السلة فارغة حالياً. أضف قطعاً من الكتالوج لبدء طلبك.',
+      cart_empty_delivery_note: 'توصيل وتركيب احترافي بسعر ثابت 5,000 ج.م في جميع أنحاء القاهرة والجيزة (حتى الدور الثاني) لأي حجم طلب، سواء قطعة واحدة أو غرف كاملة.',
+      cart_flat_badge: 'توصيل بسعر ثابت: نفس رسوم 5,000 ج.م سواء طلبت قطعة واحدة أو غرفة كاملة.',
+      wish_title: 'قائمة المفضلة',
+      wish_empty: 'قائمة المفضلة فارغة. احفظ قطعك المفضلة للعودة إليها أو نقلها للسلة لاحقاً.',
+      move_to_cart: 'نقل إلى السلة',
+      remove_lbl: 'حذف',
+      checkout_details_title: 'بيانات العميل والتوصيل',
+      checkout_name_lbl: 'الاسم الكامل *',
+      checkout_name_ph: 'الاسم بالكامل',
+      checkout_phone_lbl: 'رقم الهاتف / الواتساب *',
+      checkout_phone_ph: '01X XXXX XXXX',
+      checkout_gov_lbl: 'المحافظة *',
+      checkout_floor_lbl: 'رقم الدور *',
+      checkout_area_lbl: 'المنطقة / الكمبوند (اختياري)',
+      checkout_area_ph: 'مثال: التجمع الخامس، مدينتي، الشيخ زايد',
+      checkout_pay_title: 'طريقة الدفع *',
+      pay_instapay_title: 'إنستاباي',
+      pay_instapay_sub: 'تحويل بنكي فوري',
+      pay_wallet_title: 'محفظة إلكترونية',
+      pay_wallet_sub: 'فودافون / أورانج / اتصالات',
+      subtotal_lbl: 'إجمالي المنتجات',
+      delivery_lbl: 'التوصيل',
+      delivery_base_lbl: 'توصيل بسعر ثابت (القاهرة والجيزة حتى الدور الثاني)',
+      delivery_floor_lbl: 'رسوم الأدوار المرتفعة',
+      delivery_floor_included: 'مشمول (حتى الدور الثاني)',
+      delivery_floor_calc: 'تُحسب عند التأكيد',
+      grand_total_lbl: 'الإجمالي التقديري',
+      checkout_btn: 'تأكيد الطلب والإرسال عبر واتساب',
+      checkout_open_pay_hub: 'فتح صفحة الدفع والمتابعة',
+      checkout_err_required: 'يرجى إدخال الاسم ورقم الهاتف الصحيح لتأكيد الطلب.',
 
-  function showProfilePanel() {
-    if (refs.authForms) refs.authForms.hidden = true;
-    if (refs.profilePanel) refs.profilePanel.hidden = false;
-    renderProfile();
-  }
+      footer_desc: 'مطابخ ودريسينج روم وأثاث فاخر حسب الطلب في القاهرة الجديدة بخامات معتمدة وضمان 5 سنوات.',
+      footer_nav_title: 'تصفح الموقع',
+      footer_contact_title: 'المعرض والتواصل المباشر',
+      footer_contact_page: 'تواصل معنا',
 
-  function showAuthForms() {
-    if (refs.authForms) refs.authForms.hidden = false;
-    if (refs.profilePanel) refs.profilePanel.hidden = true;
-    updateAuthHeading();
-  }
+      contact_page_title: 'تفضل بزيارة معرض نالام بالقاهرة الجديدة',
+      contact_page_sub: 'احجز جلسة استشارة مجانية لمعاينة خامات جود وود وكونتر الغرف 16 مم وبورديوم ومفصلات SAMET ومجر FGV على الطبيعة.',
+      back_home: 'العودة للرئيسية'
+    }
+  };
 
-  function finishAuth(account, isNew) {
-    state.sessionId = account.id;
-    writeText(STORE_KEYS.session, account.id);
-    updateAccountLabel();
-    renderProfile();
-    prefillCheckout();
-    if (isNew) {
-      postWebhook({
-        type: 'signup',
-        name: account.name,
-        email: account.email,
-        phone: account.phone,
-        governorate: account.governorate,
-        createdAt: account.createdAt,
-        pageUrl: window.location.href
-      });
-      trackPixel('Lead', { content_name: 'Account Signup', currency: 'EGP', value: 0 });
-      showToast(t('account_created', { name: account.name.split(' ')[0] }));
-    } else {
-      showToast(t('welcome', { name: account.name.split(' ')[0] }));
-    }
-    if (state.pendingCheckout) {
-      state.pendingCheckout = false;
-      closeAuth(false);
-      window.setTimeout(function () {
-        openCart();
-        showCheckoutSuccess(t('resume_success'));
-      }, 180);
-    } else {
-      showProfilePanel();
-    }
-  }
-
-  function handleSignIn(event) {
-    event.preventDefault();
-    if (!refs.signInForm) return;
-    clearFormErrors(refs.signInForm);
-    showAuthBanner('');
-    var email = refs.signInEmail ? refs.signInEmail.value.trim().toLowerCase() : '';
-    var password = refs.signInPassword ? refs.signInPassword.value : '';
-    var valid = true;
-    if (!isEmail(email)) {
-      setFieldError('signInEmail', t('err_email'));
-      valid = false;
-    }
-    if (!password) {
-      setFieldError('signInPassword', t('err_required'));
-      valid = false;
-    }
-    if (!valid) return;
-    var account = state.accounts.find(function (record) { return record.email.toLowerCase() === email; });
-    if (!account) {
-      showAuthBanner(t('err_credentials'), true);
-      return;
-    }
-    var submit = $('button[type="submit"]', refs.signInForm);
-    if (submit) {
-      submit.disabled = true;
-      submit.dataset.originalText = submit.textContent;
-      submit.textContent = t('auth_busy');
-    }
-    verifyPassword(account, password).then(function (match) {
-      if (submit) {
-        submit.disabled = false;
-        if (submit.dataset.originalText) submit.textContent = submit.dataset.originalText;
-      }
-      if (!match) {
-        showAuthBanner(t('err_credentials'), true);
-        return;
-      }
-      refs.signInForm.reset();
-      finishAuth(account, false);
-    }).catch(function () {
-      if (submit) {
-        submit.disabled = false;
-        if (submit.dataset.originalText) submit.textContent = submit.dataset.originalText;
-      }
-      showAuthBanner(t('err_secure'), true);
-    });
-  }
-
-  function handleSignUp(event) {
-    event.preventDefault();
-    if (!refs.signUpForm) return;
-    clearFormErrors(refs.signUpForm);
-    showAuthBanner('');
-    var valid = validateAccountDetails('signUp');
-    var gov = refs.signUpGov ? refs.signUpGov.value : '';
-    var password = refs.signUpPassword ? refs.signUpPassword.value : '';
-    var confirm = refs.signUpConfirm ? refs.signUpConfirm.value : '';
-    if (!gov) {
-      setFieldError('signUpGov', t('err_required'));
-      valid = false;
-    }
-    if (password !== confirm) {
-      setFieldError('signUpConfirm', t('err_confirm'));
-      valid = false;
-    }
-    var email = refs.signUpEmail ? refs.signUpEmail.value.trim() : '';
-    var exists = state.accounts.some(function (record) { return record.email.toLowerCase() === email.toLowerCase(); });
-    if (exists) {
-      setFieldError('signUpEmail', t('err_exists'));
-      valid = false;
-    }
-    if (!valid) return;
-    var submit = $('button[type="submit"]', refs.signUpForm);
-    if (submit) {
-      submit.disabled = true;
-      submit.dataset.originalText = submit.textContent;
-      submit.textContent = t('auth_busy');
-    }
-    createPasswordRecord(password).then(function (record) {
-      var account = {
-        id: 'acc_' + Date.now().toString(36) + randomToken(6),
-        name: refs.signUpName.value.trim(),
-        email: email,
-        phone: normalizePhone(refs.signUpPhone.value),
-        governorate: gov,
-        passwordSalt: record.salt,
-        passwordHash: record.hash,
-        createdAt: new Date().toISOString(),
-        lastFloor: null,
-        orders: []
-      };
-      state.accounts.push(account);
-      saveAccounts();
-      if (submit) {
-        submit.disabled = false;
-        if (submit.dataset.originalText) submit.textContent = submit.dataset.originalText;
-      }
-      refs.signUpForm.reset();
-      if (refs.passwordMeter) {
-        refs.passwordMeter.style.width = '0%';
-        refs.passwordMeter.classList.remove('medium', 'strong');
-      }
-      finishAuth(account, true);
-    }).catch(function () {
-      if (submit) {
-        submit.disabled = false;
-        if (submit.dataset.originalText) submit.textContent = submit.dataset.originalText;
-      }
-      showAuthBanner(t('err_secure'), true);
-    });
-  }
-
-  function handleSignOut() {
-    state.sessionId = '';
-    try { window.localStorage.removeItem(STORE_KEYS.session); } catch (error) { /* Ignore storage errors. */ }
-    updateAccountLabel();
-    switchAuthTab('signin', false);
-    showAuthForms();
-    if (refs.signInForm) refs.signInForm.reset();
-    if (refs.signUpForm) refs.signUpForm.reset();
-    showToast(t('signed_out'));
-  }
-
-  /* ------------------------------------------------------------------------
-     Orders, webhook and WhatsApp handoff
-     ------------------------------------------------------------------------ */
-
-  function floorText(value) {
-    if (String(value) === '0') return state.lang === 'ar' ? 'أرضي' : 'Ground';
-    return String(value);
-  }
-
-  function newOrderId() {
-    var now = new Date();
-    var stamp = String(now.getFullYear()) +
-      String(now.getMonth() + 1).padStart(2, '0') +
-      String(now.getDate()).padStart(2, '0');
-    return 'NLM-' + stamp + '-' + randomToken(4).toUpperCase();
-  }
-
-  function postWebhook(payload) {
-    var url = String(CFG.googleSheetWebhookUrl || '').trim();
-    if (!url) return;
+  /* Safe Storage Helpers with In-Memory Fallback */
+  const memStore = {};
+  function lsGet(key, fallback) {
     try {
-      fetch(url, {
+      const v = localStorage.getItem(key);
+      return v ? JSON.parse(v) : (key in memStore ? memStore[key] : fallback);
+    } catch (e) {
+      return key in memStore ? memStore[key] : fallback;
+    }
+  }
+  function lsSet(key, val) {
+    memStore[key] = val;
+    try { localStorage.setItem(key, JSON.stringify(val)); } catch (e) {}
+  }
+
+  function trackPixel(eventName, params) {
+    if (typeof window.fbq === 'function') {
+      try { window.fbq('track', eventName, params || {}); } catch (e) {}
+    }
+  }
+
+  function sendToGoogleSheet(payload) {
+    if (!GOOGLE_SHEET_WEBHOOK_URL || GOOGLE_SHEET_WEBHOOK_URL.includes('YOUR_')) return;
+    try {
+      fetch(GOOGLE_SHEET_WEBHOOK_URL, {
         method: 'POST',
         mode: 'no-cors',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
         body: JSON.stringify(payload)
-      }).catch(function () {
-        /* Silent by design: the order continues through WhatsApp. */
+      }).catch(() => {});
+    } catch (e) {}
+  }
+
+  let currentLang = 'en';
+  try {
+    const saved = localStorage.getItem('nalam_lang');
+    if (saved === 'ar' || saved === 'en') currentLang = saved;
+  } catch (e) {}
+
+  let activeCategory = 'all';
+  let activeProduct = null;
+  let activeAngleIndex = 0;
+  let activeHeroStage = 0;
+  let currentUser = lsGet('nalam_current_user', null);
+
+  /* Email Verification State for Sign Up */
+  let signupVerifyState = { email: '', code: '', verified: false };
+
+  function t(key) {
+    return (I18N[currentLang] && I18N[currentLang][key]) || I18N.en[key] || key;
+  }
+
+  function formatPrice(egp) {
+    const num = Number(egp || 0).toLocaleString(currentLang === 'ar' ? 'ar-EG' : 'en-US');
+    return currentLang === 'ar' ? `${num} ج.م` : `${num} EGP`;
+  }
+
+  function getCategoryLabel(catId) {
+    const cat = CATEGORIES.find(c => c.id === catId);
+    if (!cat) return catId;
+    return currentLang === 'ar' ? cat.ar : cat.en;
+  }
+
+  /* Strictly 4 Floor Options: Ground, 1st, 2nd, Higher */
+  function floorLabel(val) {
+    const s = String(val);
+    if (currentLang === 'ar') {
+      if (s === '0') return 'الدور الأرضي';
+      if (s === '1') return 'الدور الأول';
+      if (s === '2') return 'الدور الثاني';
+      return 'أعلى من الدور الثاني';
+    }
+    if (s === '0') return 'Ground Floor';
+    if (s === '1') return '1st Floor';
+    if (s === '2') return '2nd Floor';
+    return 'Higher than 2nd Floor';
+  }
+
+  function isValidNamePart(str) {
+    const clean = (str || '').trim();
+    if (clean.length < 2) return false;
+    try {
+      return LETTERS_ONLY_RE.test(clean);
+    } catch (e) {
+      return /^[A-Za-z\u00C0-\u024F\u0600-\u06FF\s]+$/.test(clean);
+    }
+  }
+
+  function copyToClipboard(text, toastMsg) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).catch(() => fallbackCopy(text));
+    } else {
+      fallbackCopy(text);
+    }
+    showToast(toastMsg || `${t('modal_copied')} ${text}`);
+  }
+
+  function fallbackCopy(text) {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    try { document.execCommand('copy'); } catch (e) {}
+    document.body.removeChild(ta);
+  }
+
+  function showToast(msg) {
+    const toast = document.getElementById('nalamToast');
+    if (!toast) return;
+    toast.textContent = msg;
+    toast.classList.add('show');
+    clearTimeout(toast._timer);
+    toast._timer = setTimeout(() => toast.classList.remove('show'), 3200);
+  }
+
+  /* Cart & Wishlist Storage */
+  function storageScope() {
+    return currentUser && currentUser.email ? currentUser.email : 'guest';
+  }
+  function getCart() { return lsGet(`nalam_cart_${storageScope()}`, []); }
+  function saveCart(items, animateBadge) {
+    lsSet(`nalam_cart_${storageScope()}`, items);
+    updateHeaderBadges(animateBadge);
+  }
+  function getWishlist() { return lsGet(`nalam_wish_${storageScope()}`, []); }
+  function saveWishlist(ids) {
+    lsSet(`nalam_wish_${storageScope()}`, ids);
+    updateHeaderBadges(false);
+  }
+
+  function mergeGuestDataIntoUser(userEmail) {
+    const guestCart = lsGet('nalam_cart_guest', []);
+    if (guestCart.length) {
+      const userCart = lsGet(`nalam_cart_${userEmail}`, []);
+      guestCart.forEach(gi => {
+        const ex = userCart.find(ui => ui.id === gi.id);
+        if (ex) ex.qty += gi.qty;
+        else userCart.push({ id: gi.id, qty: gi.qty });
       });
-    } catch (error) {
-      /* Older browsers may reject the request; WhatsApp remains the source of truth. */
+      lsSet(`nalam_cart_${userEmail}`, userCart);
+      lsSet('nalam_cart_guest', []);
+    }
+    const guestWish = lsGet('nalam_wish_guest', []);
+    if (guestWish.length) {
+      const userWish = lsGet(`nalam_wish_${userEmail}`, []);
+      guestWish.forEach(id => { if (!userWish.includes(id)) userWish.push(id); });
+      lsSet(`nalam_wish_${userEmail}`, userWish);
+      lsSet('nalam_wish_guest', []);
     }
   }
 
-  function openWhatsApp(message) {
-    var number = String(CFG.whatsappNumber || '201132284750').replace(/\D/g, '');
-    var url = 'https://wa.me/' + number + '?text=' + encodeURIComponent(message);
-    var link = document.createElement('a');
-    link.href = url;
-    link.target = '_blank';
-    link.rel = 'noopener noreferrer';
-    link.style.display = 'none';
-    document.body.appendChild(link);
-    link.click();
-    window.setTimeout(function () {
-      if (link.parentNode) link.parentNode.removeChild(link);
-    }, 600);
+  function makePlaceholderSvg(product, angleLabel, rawPath) {
+    const title = (currentLang === 'ar' ? product.titleAr : product.titleEn).replace(/&/g, '&amp;').replace(/</g, '&lt;');
+    const cat = getCategoryLabel(product.category).replace(/&/g, '&amp;');
+    const angle = (angleLabel || 'View').replace(/&/g, '&amp;');
+    const fileHint = (rawPath || '').replace(/&/g, '&amp;');
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 600">
+      <defs>
+        <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stop-color="#F5F3EF"/>
+          <stop offset="100%" stop-color="#DDD6CB"/>
+        </linearGradient>
+      </defs>
+      <rect width="800" height="600" fill="url(#bg)"/>
+      <rect x="28" y="28" width="744" height="544" rx="18" fill="none" stroke="#C49E65" stroke-opacity="0.52" stroke-width="1.5"/>
+      <line x1="260" y1="225" x2="540" y2="225" stroke="#C49E65" stroke-width="1.5" stroke-opacity="0.72"/>
+      <text x="400" y="195" text-anchor="middle" font-family="Georgia, serif" font-size="22" letter-spacing="6" fill="#93703B">NALAM</text>
+      <text x="400" y="275" text-anchor="middle" font-family="Georgia, serif" font-size="28" font-weight="600" fill="#1E1C1A">${title}</text>
+      <text x="400" y="318" text-anchor="middle" font-family="sans-serif" font-size="18" fill="#625C54">${cat} • ${angle}</text>
+      <rect x="190" y="365" width="420" height="44" rx="22" fill="#1E1C1A" fill-opacity="0.06"/>
+      <text x="400" y="393" text-anchor="middle" font-family="monospace" font-size="14" fill="#3D3935">${fileHint}</text>
+      <text x="400" y="460" text-anchor="middle" font-family="Georgia, serif" font-style="italic" font-size="18" fill="#C49E65">Your Zone Is Glam.</text>
+    </svg>`;
+    return 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg);
   }
 
-  function buildOrderMessage(order) {
-    var lines = [];
-    lines.push('✦ NEW NALAM ORDER / طلب جديد من نالام ✦');
-    lines.push('');
-    lines.push('Order reference / رقم الطلب: ' + order.id);
-    lines.push('Customer / العميل: ' + order.customer.name);
-    lines.push('Phone / الهاتف: ' + order.customer.phone);
-    if (order.customer.email) lines.push('Email / البريد: ' + order.customer.email);
-    lines.push('Governorate / المحافظة: ' + (order.governorate === 'Cairo' ? 'Cairo / القاهرة' : 'Giza / الجيزة'));
-    lines.push('Floor / الدور: ' + floorText(order.floor) + ' (installation logistics / للتركيب)');
-    lines.push('Payment / الدفع: ' + (order.paymentMethod === 'InstaPay' ? 'InstaPay / إنستاباي' : 'Mobile Wallet / المحفظة الإلكترونية'));
-    lines.push('');
-    lines.push('──────────────');
-    lines.push('ITEMS / القطع');
-    order.items.forEach(function (item, index) {
-      lines.push((index + 1) + '. ' + item.titleEn + ' / ' + item.titleAr);
-      lines.push('   ' + item.code + ' · ' + item.dimensions);
-      lines.push('   Qty / الكمية: ' + item.qty + ' × ' + money(item.unitPrice));
-      if (item.qty > 1) lines.push('   Line total / إجمالي القطعة: ' + money(item.lineTotal));
+  /* ========================================================================
+     1. Language Switcher (EN / AR + RTL)
+     ======================================================================== */
+  function applyLanguage() {
+    const html = document.documentElement;
+    html.lang = currentLang;
+    html.dir = currentLang === 'ar' ? 'rtl' : 'ltr';
+
+    document.querySelectorAll('[data-i18n]').forEach(el => {
+      const key = el.getAttribute('data-i18n');
+      if (key) el.textContent = t(key);
     });
-    lines.push('──────────────');
-    lines.push('Items subtotal / إجمالي القطع: ' + money(order.subtotal));
-    lines.push('Delivery & installation / التوصيل والتركيب: ' + money(order.delivery));
-    lines.push('Per-floor surcharge / رسوم إضافية للدور: 0 EGP');
-    lines.push('TOTAL / الإجمالي: ' + money(order.total));
-    lines.push('');
-    lines.push('Flat-rate 5,000 EGP delivery & professional installation across anywhere in Cairo & Giza (up to 2nd floor) applies to any order size, whether single pieces or full rooms.');
-    lines.push('التوصيل والتركيب الاحترافي بسعر ثابت 5,000 جنيه مصري في أي مكان بالقاهرة والجيزة (حتى الدور الثاني) ينطبق على أي حجم طلب، سواء قطعة واحدة أو غرف كاملة.');
-    lines.push('');
-    lines.push('Thank you / شكراً — Nalam / نالام');
-    lines.push('Your Zone Is Glam. / مساحتك بأناقة فاخرة.');
-    return lines.join('\n');
-  }
-
-  function saveOrderToAccount(order) {
-    var account = currentAccount();
-    if (!account) return;
-    if (!Array.isArray(account.orders)) account.orders = [];
-    account.orders.unshift(order);
-    account.orders = account.orders.slice(0, 30);
-    account.lastFloor = order.floor;
-    if (!account.phone && order.customer.phone) account.phone = order.customer.phone;
-    if (!account.governorate && order.governorate) account.governorate = order.governorate;
-    saveAccounts();
-    renderProfile();
-  }
-
-  function resetCheckoutForm() {
-    if (!refs.checkoutForm) return;
-    refs.checkoutForm.reset();
-    clearFormErrors(refs.checkoutForm);
-    if (refs.checkoutSuccess) {
-      refs.checkoutSuccess.classList.remove('show');
-      refs.checkoutSuccess.textContent = '';
-    }
-    prefillCheckout();
-    syncPaymentDetails();
-  }
-
-  function handleConfirmOrder() {
-    if (!state.cart.length) {
-      showToast(t('empty_cart'));
-      return;
-    }
-    var account = currentAccount();
-    if (!account) {
-      state.pendingCheckout = true;
-      closeCart(false);
-      openAuth('signin');
-      showAuthBanner(t('auth_banner'));
-      return;
-    }
-    if (!validateCheckout()) return;
-    var details = cartDetails();
-    var subtotal = cartSubtotal();
-    var delivery = deliveryFee();
-    var total = cartTotal();
-    var method = paymentValue();
-    var order = {
-      id: newOrderId(),
-      createdAt: new Date().toISOString(),
-      status: t('order_status'),
-      accountId: account.id,
-      customer: {
-        name: refs.checkoutName.value.trim(),
-        phone: normalizePhone(refs.checkoutPhone.value),
-        email: account.email
-      },
-      governorate: refs.checkoutGov.value,
-      floor: Number(refs.checkoutFloor.value),
-      paymentMethod: method,
-      items: details.map(function (entry) {
-        return {
-          id: entry.product.id,
-          code: entry.product.code,
-          titleEn: entry.product.titleEn,
-          titleAr: entry.product.titleAr,
-          dimensions: entry.product.dimensions,
-          qty: entry.qty,
-          unitPrice: entry.product.priceEgp,
-          lineTotal: entry.lineTotal
-        };
-      }),
-      subtotal: subtotal,
-      delivery: delivery,
-      total: total,
-      currency: 'EGP',
-      language: state.lang,
-      pageUrl: window.location.href
-    };
-
-    trackPixel('InitiateCheckout', {
-      content_ids: order.items.map(function (item) { return item.id; }),
-      content_type: 'product',
-      contents: order.items.map(function (item) {
-        return { id: item.id, quantity: item.qty, item_price: item.unitPrice };
-      }),
-      value: total,
-      currency: 'EGP',
-      num_items: order.items.reduce(function (sum, item) { return sum + item.qty; }, 0)
+    document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
+      const key = el.getAttribute('data-i18n-placeholder');
+      if (key) el.setAttribute('placeholder', t(key));
     });
-    postWebhook(Object.assign({ type: 'order' }, order));
-    saveOrderToAccount(order);
-    state.lastOrder = order;
-    openWhatsApp(buildOrderMessage(order));
-    state.cart = [];
-    saveCart();
-    renderCart();
-    updateBadges(false, false);
-    resetCheckoutForm();
-    closeCart(false);
-    showToast(t('order_sent') + ' ' + t('order_saved', { id: order.id }));
+    document.querySelectorAll('[data-config-hours]').forEach(el => {
+      el.textContent = currentLang === 'ar' ? CONFIG.showroomHoursAr : CONFIG.showroomHoursEn;
+    });
+    document.querySelectorAll('[data-config-address]').forEach(el => {
+      el.textContent = currentLang === 'ar' ? CONFIG.addressAr : CONFIG.addressEn;
+    });
+
+    populateFloorSelects();
+    populateInquiryCategorySelect();
+    updateHeroStageText(activeHeroStage);
+    updateHeaderBadges(false);
+    renderFilterTabs();
+    renderCatalogue();
+    renderCartDrawer();
+    renderWishlistDrawer();
+    renderAccountHub();
+    renderPaymentHub();
+    if (activeProduct) renderModalContent();
   }
 
-  /* ------------------------------------------------------------------------
-     Consultation form
-     ------------------------------------------------------------------------ */
+  /* Strictly 4 Options: Ground, 1st, 2nd, Higher */
+  function populateFloorSelects() {
+    const optsData = ['0', '1', '2', 'higher'];
+    document.querySelectorAll('[data-floor-select]').forEach(sel => {
+      const prev = sel.value || '0';
+      sel.innerHTML = optsData.map(v => `<option value="${v}">${floorLabel(v)}</option>`).join('');
+      sel.value = optsData.includes(prev) ? prev : '0';
+    });
+  }
 
-  function handleContactSubmit(event) {
-    event.preventDefault();
-    var form = refs.contactForm;
-    if (!form) return;
-    clearFormErrors(form);
-    var name = refs.contactName ? refs.contactName.value.trim() : '';
-    var phone = refs.contactPhone ? refs.contactPhone.value : '';
-    var gov = refs.contactGov ? refs.contactGov.value : '';
-    var interest = refs.contactInterest ? refs.contactInterest.value : '';
-    var message = refs.contactMessage ? refs.contactMessage.value.trim() : '';
-    var valid = true;
-    if (!isName(name)) {
-      setFieldError('contactName', t('err_name'));
-      valid = false;
+  function bindLanguageToggles() {
+    document.querySelectorAll('[data-lang-toggle]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        currentLang = currentLang === 'en' ? 'ar' : 'en';
+        try { localStorage.setItem('nalam_lang', currentLang); } catch (e) {}
+        applyLanguage();
+      });
+    });
+  }
+
+  /* ========================================================================
+     2. Sticky Header, Page Scroll Progress & Mobile Drawer
+     ======================================================================== */
+  function closeMobileDrawer() {
+    document.getElementById('mobileDrawer')?.classList.remove('open');
+    document.getElementById('mobileDrawerBackdrop')?.classList.remove('open');
+    document.getElementById('mobileMenuBtn')?.setAttribute('aria-expanded', 'false');
+  }
+
+  function openMobileDrawer() {
+    document.getElementById('mobileDrawer')?.classList.add('open');
+    document.getElementById('mobileDrawerBackdrop')?.classList.add('open');
+    document.getElementById('mobileMenuBtn')?.setAttribute('aria-expanded', 'true');
+  }
+
+  function initHeader() {
+    const header = document.querySelector('.site-header');
+    const scrollBar = document.getElementById('pageScrollBar');
+    const menuBtn = document.getElementById('mobileMenuBtn');
+    const closeBtn = document.getElementById('mobileDrawerCloseBtn');
+    const backdrop = document.getElementById('mobileDrawerBackdrop');
+    const drawer = document.getElementById('mobileDrawer');
+
+    window.addEventListener('scroll', () => {
+      if (header) header.classList.toggle('scrolled', window.scrollY > 24);
+      if (scrollBar) {
+        const docH = document.documentElement.scrollHeight - window.innerHeight;
+        const pct = docH > 0 ? Math.min(100, Math.max(0, (window.scrollY / docH) * 100)) : 0;
+        scrollBar.style.width = `${pct.toFixed(1)}%`;
+      }
+    }, { passive: true });
+
+    if (menuBtn) {
+      menuBtn.addEventListener('click', () => {
+        if (drawer && drawer.classList.contains('open')) closeMobileDrawer();
+        else openMobileDrawer();
+      });
     }
-    if (!isEgyptianPhone(phone)) {
-      setFieldError('contactPhone', t('err_phone'));
-      valid = false;
+    if (closeBtn) closeBtn.addEventListener('click', closeMobileDrawer);
+    if (backdrop) backdrop.addEventListener('click', closeMobileDrawer);
+    if (drawer) drawer.querySelectorAll('a').forEach(a => a.addEventListener('click', closeMobileDrawer));
+  }
+
+  /* ========================================================================
+     3. Side-by-Side 6-Stage Scroll-Reveal Kitchen Assembly
+     ======================================================================== */
+  function updateHeroStageText(stageIdx) {
+    const data = HERO_STAGES[stageIdx] || HERO_STAGES[0];
+    const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+    set('heroStageStep', currentLang === 'ar' ? data.stepAr : data.stepEn);
+    set('heroStageCounter', `0${stageIdx + 1} / 0${HERO_STAGES.length}`);
+    set('heroStageTitle', currentLang === 'ar' ? data.titleAr : data.titleEn);
+    set('heroStageDesc', currentLang === 'ar' ? data.descAr : data.descEn);
+    set('stageVisualBadge', currentLang === 'ar' ? data.stepAr : data.stepEn);
+
+    const chipsEl = document.getElementById('heroStageChips');
+    if (chipsEl) {
+      const chips = currentLang === 'ar' ? data.chipsAr : data.chipsEn;
+      chipsEl.innerHTML = chips.map(c => `<span class="stage-highlight-chip">${c}</span>`).join('');
     }
-    if (!gov) {
-      setFieldError('contactGov', t('err_required'));
-      valid = false;
+    document.querySelectorAll('.stage-dot-btn').forEach((btn, idx) => {
+      btn.classList.toggle('active', idx === stageIdx);
+      btn.classList.toggle('passed', idx < stageIdx);
+    });
+  }
+
+  function initKitchenScrollShowcase() {
+    const track = document.getElementById('showcase');
+    if (!track) return;
+    const layers = Array.from(track.querySelectorAll('.room-layer[data-stage]'));
+    const progressFill = document.getElementById('stageProgressFill');
+    const stepper = document.getElementById('heroStageStepper');
+    let ticking = false;
+
+    if (stepper) {
+      stepper.innerHTML = HERO_STAGES.map((_, idx) =>
+        `<button type="button" class="stage-dot-btn ${idx === 0 ? 'active' : ''}" data-jump-stage="${idx}" aria-label="Stage ${idx + 1}"></button>`
+      ).join('');
+      stepper.querySelectorAll('[data-jump-stage]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const idx = Number(btn.getAttribute('data-jump-stage'));
+          const scrollable = track.offsetHeight - window.innerHeight;
+          const fractions = [0.0, 0.16, 0.34, 0.52, 0.70, 0.90];
+          window.scrollTo({ top: track.offsetTop + scrollable * (fractions[idx] || 0), behavior: 'smooth' });
+        });
+      });
     }
-    if (!interest) {
-      setFieldError('contactInterest', t('err_required'));
-      valid = false;
+
+    function updateFromScroll() {
+      ticking = false;
+      const rect = track.getBoundingClientRect();
+      const scrollable = track.offsetHeight - window.innerHeight;
+      if (scrollable <= 0) return;
+      const raw = Math.max(0, Math.min(1, -rect.top / scrollable));
+      let stageIdx = 0;
+      if (raw >= 0.82) stageIdx = 5;
+      else if (raw >= 0.64) stageIdx = 4;
+      else if (raw >= 0.46) stageIdx = 3;
+      else if (raw >= 0.28) stageIdx = 2;
+      else if (raw >= 0.10) stageIdx = 1;
+      else stageIdx = 0;
+
+      layers.forEach(img => img.classList.toggle('visible', Number(img.getAttribute('data-stage')) <= stageIdx));
+      if (progressFill) progressFill.style.width = `${(raw * 100).toFixed(1)}%`;
+      if (stageIdx !== activeHeroStage) {
+        activeHeroStage = stageIdx;
+        updateHeroStageText(stageIdx);
+      }
     }
-    if (!valid) {
-      var first = $('.invalid', form);
-      if (first) first.focus({ preventScroll: true });
+
+    window.addEventListener('scroll', () => {
+      if (!ticking) {
+        ticking = true;
+        window.requestAnimationFrame(updateFromScroll);
+      }
+    }, { passive: true });
+
+    updateHeroStageText(0);
+    updateFromScroll();
+  }
+
+  function initScrollReveal() {
+    const els = document.querySelectorAll('[data-reveal]');
+    if (!els.length) return;
+    if (!('IntersectionObserver' in window)) {
+      els.forEach(el => el.classList.add('revealed'));
       return;
     }
-    var lines = [];
-    lines.push('✦ NEW NALAM CONSULTATION / استشارة جديدة من نالام ✦');
-    lines.push('');
-    lines.push('Name / الاسم: ' + name);
-    lines.push('Phone / الهاتف: ' + normalizePhone(phone));
-    lines.push('Governorate / المحافظة: ' + (gov === 'Cairo' ? 'Cairo / القاهرة' : 'Giza / الجيزة'));
-    lines.push('Interested in / المهتم به: ' + interest);
-    if (message) {
-      lines.push('');
-      lines.push('Message / الرسالة:');
-      lines.push(message);
+    const io = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          entry.target.classList.add('revealed');
+          io.unobserve(entry.target);
+        }
+      });
+    }, { threshold: 0.12, rootMargin: '0px 0px -36px 0px' });
+    els.forEach(el => io.observe(el));
+  }
+
+  /* ========================================================================
+     4. Professional Account System (Split Name, Email Verify, Terms, Hub)
+     ======================================================================== */
+  function getFullName(user) {
+    if (!user) return '';
+    if (user.firstName || user.lastName) return `${user.firstName || ''} ${user.lastName || ''}`.trim();
+    return user.name || '';
+  }
+
+  function updateHeaderBadges(animateCart) {
+    const cartCount = getCart().reduce((s, it) => s + (it.qty || 1), 0);
+    const wishCount = getWishlist().length;
+
+    document.querySelectorAll('[data-cart-badge]').forEach(el => {
+      el.textContent = String(cartCount);
+      if (animateCart) {
+        el.classList.remove('pop');
+        void el.offsetWidth;
+        el.classList.add('pop');
+      }
+    });
+    document.querySelectorAll('[data-wish-badge]').forEach(el => { el.textContent = String(wishCount); });
+
+    document.querySelectorAll('[data-account-label]').forEach(el => {
+      el.textContent = currentUser ? (currentUser.firstName || getFullName(currentUser).split(' ')[0] || t('nav_account')) : t('nav_signin');
+    });
+    document.querySelectorAll('[data-header-avatar]').forEach(wrap => {
+      if (currentUser && currentUser.avatar) {
+        wrap.innerHTML = `<img src="${currentUser.avatar}" alt="Avatar" class="header-avatar-mini">`;
+      } else {
+        wrap.innerHTML = '&#128100;';
+      }
+    });
+  }
+
+  function showAuthError(msg) {
+    const errEl = document.getElementById('authErrorMsg');
+    if (!errEl) return;
+    errEl.textContent = msg || '';
+    errEl.classList.toggle('show', Boolean(msg));
+  }
+
+  function openAuthModal(mode, showRequireBanner) {
+    const modal = document.getElementById('authModal');
+    if (!modal) return;
+    showAuthError('');
+    const banner = document.getElementById('authBanner');
+    if (banner) {
+      banner.textContent = t('auth_need_account');
+      banner.classList.toggle('show', Boolean(showRequireBanner));
     }
-    lines.push('');
-    lines.push('Please send this message so our designers can reply. / يرجى إرسال هذه الرسالة ليرد مصممونا.');
-    openWhatsApp(lines.join('\n'));
-    if (refs.contactSuccess) refs.contactSuccess.classList.add('show');
-    showToast(t('contact_ready'));
-    form.reset();
-  }
 
-  /* ------------------------------------------------------------------------
-     Toast and overlay management
-     ------------------------------------------------------------------------ */
+    const tabsWrap = document.getElementById('authTabsWrap');
+    const signinForm = document.getElementById('authSigninForm');
+    const signupForm = document.getElementById('authSignupForm');
+    const profileForm = document.getElementById('authProfileForm');
 
-  var toastTimer = null;
+    if (currentUser && mode !== 'signin' && mode !== 'signup') {
+      if (tabsWrap) tabsWrap.style.display = 'none';
+      if (signinForm) signinForm.style.display = 'none';
+      if (signupForm) signupForm.style.display = 'none';
+      if (profileForm) {
+        profileForm.style.display = 'grid';
+        const full = getFullName(currentUser);
+        const initials = full.slice(0, 2).toUpperCase() || 'NL';
+        const av = document.getElementById('profAvatar');
+        if (av) {
+          av.innerHTML = currentUser.avatar ? `<img src="${currentUser.avatar}" alt="Avatar" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">` : initials;
+        }
+        const pEmail = document.getElementById('profEmailLabel');
+        if (pEmail) pEmail.textContent = currentUser.email || '';
+        const setV = (id, v) => { const e = document.getElementById(id); if (e) e.value = v; };
+        setV('profFirstName', currentUser.firstName || full.split(' ')[0] || '');
+        setV('profLastName', currentUser.lastName || full.split(' ').slice(1).join(' ') || '');
+        setV('profPhone', currentUser.phone || '');
+        setV('profGov', currentUser.gov || 'Cairo');
+        setV('profFloor', String(currentUser.floor ?? '0'));
+        setV('profAddress', currentUser.address || '');
+      }
+    } else {
+      if (tabsWrap) tabsWrap.style.display = 'grid';
+      if (profileForm) profileForm.style.display = 'none';
+      switchAuthTab(mode === 'signup' ? 'signup' : 'signin');
+    }
 
-  function showToast(message) {
-    if (!refs.toast) return;
-    refs.toast.textContent = message;
-    refs.toast.classList.add('show');
-    window.clearTimeout(toastTimer);
-    toastTimer = window.setTimeout(function () {
-      refs.toast.classList.remove('show');
-    }, 3400);
-  }
-
-  function overlayOpen() {
-    return !!(
-      (refs.mobileDrawer && refs.mobileDrawer.classList.contains('open')) ||
-      (refs.cartDrawer && refs.cartDrawer.classList.contains('open')) ||
-      (refs.wishlistDrawer && refs.wishlistDrawer.classList.contains('open')) ||
-      (refs.productModalBackdrop && refs.productModalBackdrop.classList.contains('open')) ||
-      (refs.authModalBackdrop && refs.authModalBackdrop.classList.contains('open')) ||
-      (refs.zoomModal && refs.zoomModal.classList.contains('open'))
-    );
-  }
-
-  function lockBody() {
+    modal.classList.add('open');
+    modal.scrollTop = 0;
     document.body.style.overflow = 'hidden';
   }
 
-  function unlockBody() {
-    if (!overlayOpen()) document.body.style.overflow = '';
+  function closeAuthModal() {
+    document.getElementById('authModal')?.classList.remove('open');
+    document.body.style.overflow = '';
   }
 
-  function rememberFocus() {
-    state.lastFocus = document.activeElement;
+  function switchAuthTab(tab) {
+    showAuthError('');
+    const signinForm = document.getElementById('authSigninForm');
+    const signupForm = document.getElementById('authSignupForm');
+    document.querySelectorAll('.auth-tab').forEach(b => {
+      b.classList.toggle('active', b.getAttribute('data-auth-tab') === tab);
+    });
+    if (signinForm) signinForm.style.display = tab === 'signin' ? 'grid' : 'none';
+    if (signupForm) signupForm.style.display = tab === 'signup' ? 'grid' : 'none';
   }
 
-  function restoreFocus() {
-    if (state.lastFocus && typeof state.lastFocus.focus === 'function') {
-      try { state.lastFocus.focus({ preventScroll: true }); } catch (error) { /* Ignore detached nodes. */ }
-    }
+  function prefillCheckoutFromUser() {
+    if (!currentUser) return;
+    const setIfEmpty = (id, val) => {
+      const el = document.getElementById(id);
+      if (el && val && !el.dataset.userTouched) el.value = val;
+    };
+    setIfEmpty('checkoutName', getFullName(currentUser));
+    setIfEmpty('checkoutPhone', currentUser.phone);
+    setIfEmpty('checkoutGov', currentUser.gov || 'Cairo');
+    setIfEmpty('checkoutFloor', String(currentUser.floor ?? '0'));
+    setIfEmpty('checkoutAddress', currentUser.address || '');
   }
 
-  function openCart() {
-    if (!refs.cartDrawer) return;
-    closeProduct(false);
-    closeWishlist(false);
-    closeAuth(false);
-    closeMobile(false);
-    rememberFocus();
-    renderCart();
-    prefillCheckout();
-    refs.cartBackdrop.classList.add('open');
-    refs.cartDrawer.classList.add('open');
-    refs.cartDrawer.setAttribute('aria-hidden', 'false');
-    lockBody();
-    var close = $('[data-close-cart]', refs.cartDrawer);
-    if (close) window.setTimeout(function () { close.focus({ preventScroll: true }); }, 80);
+  function openTermsModal() {
+    const tm = document.getElementById('termsModal');
+    if (tm) tm.classList.add('open');
+  }
+  function closeTermsModal() {
+    document.getElementById('termsModal')?.classList.remove('open');
   }
 
-  function closeCart(restore) {
-    if (!refs.cartDrawer) return;
-    refs.cartDrawer.classList.remove('open');
-    refs.cartDrawer.setAttribute('aria-hidden', 'true');
-    if (refs.cartBackdrop) refs.cartBackdrop.classList.remove('open');
-    unlockBody();
-    if (restore !== false) restoreFocus();
-  }
+  function initAuthModal() {
+    const modal = document.getElementById('authModal');
+    document.getElementById('authCloseBtn')?.addEventListener('click', closeAuthModal);
+    modal?.addEventListener('click', e => { if (e.target === modal) closeAuthModal(); });
 
-  function openWishlist() {
-    if (!refs.wishlistDrawer) return;
-    closeCart(false);
-    closeProduct(false);
-    closeAuth(false);
-    closeMobile(false);
-    rememberFocus();
-    renderWishlist();
-    refs.wishlistBackdrop.classList.add('open');
-    refs.wishlistDrawer.classList.add('open');
-    refs.wishlistDrawer.setAttribute('aria-hidden', 'false');
-    lockBody();
-    var close = $('[data-close-wishlist]', refs.wishlistDrawer);
-    if (close) window.setTimeout(function () { close.focus({ preventScroll: true }); }, 80);
-  }
+    /* Terms Modal triggers */
+    document.querySelectorAll('[data-open-terms]').forEach(btn => {
+      btn.addEventListener('click', e => { e.preventDefault(); openTermsModal(); });
+    });
+    document.getElementById('termsCloseBtn')?.addEventListener('click', closeTermsModal);
+    document.getElementById('termsAcceptBtn')?.addEventListener('click', () => {
+      const cb = document.getElementById('suTermsCheck');
+      if (cb) cb.checked = true;
+      closeTermsModal();
+    });
+    document.getElementById('termsModal')?.addEventListener('click', e => {
+      if (e.target.id === 'termsModal') closeTermsModal();
+    });
 
-  function closeWishlist(restore) {
-    if (!refs.wishlistDrawer) return;
-    refs.wishlistDrawer.classList.remove('open');
-    refs.wishlistDrawer.setAttribute('aria-hidden', 'true');
-    if (refs.wishlistBackdrop) refs.wishlistBackdrop.classList.remove('open');
-    unlockBody();
-    if (restore !== false) restoreFocus();
-  }
+    document.querySelectorAll('[data-open-auth]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        closeMobileDrawer();
+        openAuthModal(currentUser ? 'profile' : 'signin', false);
+      });
+    });
 
-  function openAuth(mode) {
-    if (!refs.authModalBackdrop) return;
-    closeCart(false);
-    closeWishlist(false);
-    closeProduct(false);
-    closeMobile(false);
-    rememberFocus();
-    var account = currentAccount();
-    if (account) {
-      showProfilePanel();
-    } else {
-      showAuthForms();
-      switchAuthTab(mode || 'signin', false);
-      if (state.pendingCheckout) showAuthBanner(t('auth_banner'));
-    }
-    refs.authModalBackdrop.classList.add('open');
-    lockBody();
-    if (!account) {
-      var target = state.authMode === 'signup' ? refs.signUpName : refs.signInEmail;
-      if (target) window.setTimeout(function () { target.focus({ preventScroll: true }); }, 120);
-    }
-  }
+    document.querySelectorAll('.auth-tab').forEach(btn => {
+      btn.addEventListener('click', () => switchAuthTab(btn.getAttribute('data-auth-tab')));
+    });
 
-  function closeAuth(restore) {
-    if (!refs.authModalBackdrop) return;
-    refs.authModalBackdrop.classList.remove('open');
-    unlockBody();
-    if (restore !== false) restoreFocus();
-  }
+    /* Password Show/Hide */
+    document.querySelectorAll('[data-pass-toggle]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const input = document.getElementById(btn.getAttribute('data-pass-toggle'));
+        if (!input) return;
+        const isPass = input.type === 'password';
+        input.type = isPass ? 'text' : 'password';
+        btn.textContent = isPass ? t('auth_hide') : t('auth_show');
+      });
+    });
 
-  function openMobile() {
-    if (!refs.mobileDrawer) return;
-    refs.mobileDrawer.classList.add('open');
-    refs.mobileDrawerBackdrop.classList.add('open');
-    refs.mobileDrawer.setAttribute('aria-hidden', 'false');
-    if (refs.mobileMenuBtn) refs.mobileMenuBtn.setAttribute('aria-expanded', 'true');
-    lockBody();
-    if (refs.mobileDrawerCloseBtn) refs.mobileDrawerCloseBtn.focus({ preventScroll: true });
-  }
-
-  function closeMobile(restore) {
-    if (!refs.mobileDrawer) return;
-    refs.mobileDrawer.classList.remove('open');
-    if (refs.mobileDrawerBackdrop) refs.mobileDrawerBackdrop.classList.remove('open');
-    refs.mobileDrawer.setAttribute('aria-hidden', 'true');
-    if (refs.mobileMenuBtn) {
-      refs.mobileMenuBtn.setAttribute('aria-expanded', 'false');
-      if (restore !== false) refs.mobileMenuBtn.focus({ preventScroll: true });
-    }
-    unlockBody();
-  }
-
-  function renderModalProduct() {
-    var product = PRODUCT_MAP.get(state.currentProductId);
-    if (!product) return;
-    var index = state.modalImageIndex || 0;
-    if (index >= product.images.length) index = 0;
-    state.modalImageIndex = index;
-    if (refs.modalCategory) refs.modalCategory.textContent = categoryName(product.category).toUpperCase();
-    if (refs.modalProductTitle) refs.modalProductTitle.textContent = productTitle(product);
-    if (refs.modalPrice) refs.modalPrice.textContent = money(product.priceEgp);
-    if (refs.modalDimensions) refs.modalDimensions.textContent = product.dimensions;
-    if (refs.modalMaterial) refs.modalMaterial.textContent = productMaterial(product);
-    if (refs.modalHardware) refs.modalHardware.textContent = productHardware(product);
-    if (refs.modalFinish) refs.modalFinish.textContent = productFinish(product);
-    if (refs.modalCode) refs.modalCode.textContent = product.code;
-    if (refs.modalMainLabel) refs.modalMainLabel.textContent = productImageLabel(product, index);
-    if (refs.modalMainImg) {
-      refs.modalMainImg.alt = productTitle(product) + ' — ' + productImageLabel(product, index);
-      applyProductPhoto(refs.modalMainImg, product, index);
-    }
-    if (refs.modalThumbs) {
-      refs.modalThumbs.innerHTML = product.images.map(function (image, imageIndex) {
-        return '<button type="button" class="modal-thumb' + (imageIndex === index ? ' active' : '') + '" data-modal-thumb="' + imageIndex + '" aria-label="' + esc(state.lang === 'ar' ? image.labelAr : image.labelEn) + '">' +
-          '<img alt="' + esc(state.lang === 'ar' ? image.labelAr : image.labelEn) + '" width="240" height="180" loading="lazy" decoding="async">' +
-          '<span>' + esc(state.lang === 'ar' ? image.labelAr : image.labelEn) + '</span>' +
-          '</button>';
-      }).join('');
-      $$('.modal-thumb img', refs.modalThumbs).forEach(function (img, imageIndex) {
-        applyProductPhoto(img, product, imageIndex);
+    /* Password Strength Meter */
+    const suPass = document.getElementById('suPass');
+    const strengthFill = document.getElementById('suPassStrength');
+    if (suPass && strengthFill) {
+      suPass.addEventListener('input', () => {
+        const v = suPass.value || '';
+        let score = 0;
+        if (v.length >= 6) score += 35;
+        if (v.length >= 9) score += 20;
+        if (/[A-Z]/.test(v) || /[0-9]/.test(v)) score += 25;
+        if (/[^A-Za-z0-9]/.test(v)) score += 20;
+        strengthFill.style.width = `${Math.min(100, score)}%`;
+        strengthFill.style.background = score >= 75 ? '#1B6E48' : score >= 45 ? '#C49E65' : '#B33A3A';
       });
     }
-    if (refs.modalQty) refs.modalQty.textContent = String(state.modalQty);
-    if (refs.modalWishlist) {
-      var saved = state.wishlist.indexOf(product.id) !== -1;
-      refs.modalWishlist.classList.toggle('saved', saved);
-      refs.modalWishlist.setAttribute('aria-pressed', saved ? 'true' : 'false');
-      refs.modalWishlist.textContent = saved ? '♥' : '♡';
-      refs.modalWishlist.setAttribute('aria-label', state.lang === 'ar' ? 'حفظ في المفضلة' : 'Save to wishlist');
+
+    document.getElementById('authForgotBtn')?.addEventListener('click', () => showToast(t('auth_forgot_toast')));
+
+    /* Strip digits/symbols live on First/Last name fields */
+    ['suFirstName', 'suLastName', 'profFirstName', 'profLastName', 'hubFirstName', 'hubLastName'].forEach(id => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.addEventListener('input', () => {
+        try {
+          el.value = el.value.replace(/[^\p{L}\s]/gu, '');
+        } catch (e) {}
+      });
+    });
+
+    /* Email Verification Check in Sign Up */
+    const suEmail = document.getElementById('suEmail');
+    const sendVerifyBtn = document.getElementById('suSendVerifyBtn');
+    const verifyBox = document.getElementById('suVerifyBox');
+    const verifyHint = document.getElementById('suVerifyHint');
+    const verifyCodeInput = document.getElementById('suVerifyCode');
+    const confirmVerifyBtn = document.getElementById('suConfirmVerifyBtn');
+
+    if (suEmail && sendVerifyBtn) {
+      suEmail.addEventListener('input', () => {
+        const val = (suEmail.value || '').trim().toLowerCase();
+        if (val !== signupVerifyState.email) {
+          signupVerifyState = { email: '', code: '', verified: false };
+          sendVerifyBtn.classList.remove('verified');
+          sendVerifyBtn.textContent = t('auth_verify_btn');
+          verifyBox?.classList.remove('show');
+        }
+      });
+
+      sendVerifyBtn.addEventListener('click', () => {
+        const email = (suEmail.value || '').trim().toLowerCase();
+        if (!EMAIL_RE.test(email)) {
+          showAuthError(t('auth_email_invalid'));
+          return;
+        }
+        showAuthError('');
+        const code = String(Math.floor(100000 + Math.random() * 900000));
+        signupVerifyState = { email, code, verified: false };
+        if (verifyHint) {
+          verifyHint.textContent = currentLang === 'ar'
+            ? `تم إرسال رمز التحقق إلى ${email} (رمز الاختبار: ${code})`
+            : `Verification code sent to ${email} (Demo code: ${code})`;
+        }
+        if (verifyCodeInput) verifyCodeInput.value = '';
+        verifyBox?.classList.add('show');
+        showToast(currentLang === 'ar' ? `رمز التحقق: ${code}` : `Verification code: ${code}`);
+      });
+    }
+
+    if (confirmVerifyBtn && verifyCodeInput) {
+      confirmVerifyBtn.addEventListener('click', () => {
+        const entered = (verifyCodeInput.value || '').trim();
+        if (!signupVerifyState.code || entered !== signupVerifyState.code) {
+          showAuthError(t('auth_verify_wrong'));
+          return;
+        }
+        showAuthError('');
+        signupVerifyState.verified = true;
+        verifyBox?.classList.remove('show');
+        if (sendVerifyBtn) {
+          sendVerifyBtn.classList.add('verified');
+          sendVerifyBtn.textContent = t('auth_verified_lbl');
+        }
+        showToast(currentLang === 'ar' ? 'تم التحقق من البريد الإلكتروني بنجاح!' : 'Email verified successfully!');
+      });
+    }
+
+    /* Sign In Submit */
+    const signinForm = document.getElementById('authSigninForm');
+    if (signinForm) {
+      signinForm.addEventListener('submit', e => {
+        e.preventDefault();
+        const email = (document.getElementById('siEmail').value || '').trim().toLowerCase();
+        const pass = document.getElementById('siPass').value || '';
+        const users = lsGet('nalam_users', []);
+        const found = users.find(u => u.email === email && u.password === pass);
+        if (!found) {
+          showAuthError(t('auth_invalid'));
+          return;
+        }
+        mergeGuestDataIntoUser(found.email);
+        currentUser = found;
+        lsSet('nalam_current_user', currentUser);
+        closeAuthModal();
+        prefillCheckoutFromUser();
+        updateHeaderBadges(false);
+        renderCatalogue();
+        renderCartDrawer();
+        renderWishlistDrawer();
+        renderAccountHub();
+        showToast(currentLang === 'ar' ? `مرحباً بك يا ${getFullName(found)}` : `Welcome back, ${getFullName(found)}`);
+      });
+    }
+
+    /* Sign Up Submit */
+    const signupForm = document.getElementById('authSignupForm');
+    if (signupForm) {
+      signupForm.addEventListener('submit', e => {
+        e.preventDefault();
+        const firstName = (document.getElementById('suFirstName')?.value || '').trim();
+        const lastName = (document.getElementById('suLastName')?.value || '').trim();
+        const email = (document.getElementById('suEmail')?.value || '').trim().toLowerCase();
+        const termsChecked = Boolean(document.getElementById('suTermsCheck')?.checked);
+
+        if (!isValidNamePart(firstName) || !isValidNamePart(lastName)) {
+          showAuthError(t('auth_name_err'));
+          return;
+        }
+        if (!EMAIL_RE.test(email)) {
+          showAuthError(t('auth_email_invalid'));
+          return;
+        }
+        if (!signupVerifyState.verified || signupVerifyState.email !== email) {
+          showAuthError(t('auth_verify_required'));
+          return;
+        }
+        if (!termsChecked) {
+          showAuthError(t('auth_terms_required'));
+          return;
+        }
+
+        const users = lsGet('nalam_users', []);
+        if (users.some(u => u.email === email)) {
+          showAuthError(t('auth_exists'));
+          switchAuthTab('signin');
+          return;
+        }
+
+        const newUser = {
+          firstName,
+          lastName,
+          name: `${firstName} ${lastName}`,
+          email,
+          emailVerified: true,
+          phone: (document.getElementById('suPhone')?.value || '').trim(),
+          password: document.getElementById('suPass')?.value || '',
+          gov: document.getElementById('suGov')?.value || 'Cairo',
+          floor: document.getElementById('suFloor')?.value || '0',
+          address: (document.getElementById('suAddress')?.value || '').trim(),
+          avatar: '',
+          acceptedTermsAt: new Date().toISOString(),
+          createdAt: new Date().toISOString()
+        };
+        users.push(newUser);
+        lsSet('nalam_users', users);
+        mergeGuestDataIntoUser(newUser.email);
+        currentUser = newUser;
+        lsSet('nalam_current_user', currentUser);
+
+        trackPixel('Lead', { content_name: 'Nalam Account Signup', content_category: 'account', status: 'registered' });
+        sendToGoogleSheet({
+          type: 'account_signup',
+          timestamp: newUser.createdAt,
+          language: currentLang,
+          firstName: newUser.firstName,
+          lastName: newUser.lastName,
+          name: newUser.name,
+          email: newUser.email,
+          emailVerified: true,
+          phone: newUser.phone,
+          governorate: newUser.gov,
+          floor: floorLabel(newUser.floor),
+          address: newUser.address
+        });
+
+        closeAuthModal();
+        prefillCheckoutFromUser();
+        updateHeaderBadges(false);
+        renderCatalogue();
+        renderCartDrawer();
+        renderWishlistDrawer();
+        renderAccountHub();
+        showToast(currentLang === 'ar' ? `تم إنشاء حسابك بنجاح يا ${newUser.name}` : `Account created — welcome, ${newUser.name}!`);
+      });
+    }
+
+    /* Quick Profile Update inside Modal */
+    const profileForm = document.getElementById('authProfileForm');
+    if (profileForm) {
+      profileForm.addEventListener('submit', e => {
+        e.preventDefault();
+        if (!currentUser) return;
+        const fn = (document.getElementById('profFirstName')?.value || '').trim();
+        const ln = (document.getElementById('profLastName')?.value || '').trim();
+        if (!isValidNamePart(fn) || !isValidNamePart(ln)) {
+          showAuthError(t('auth_name_err'));
+          return;
+        }
+        currentUser.firstName = fn;
+        currentUser.lastName = ln;
+        currentUser.name = `${fn} ${ln}`;
+        currentUser.phone = (document.getElementById('profPhone')?.value || '').trim();
+        currentUser.gov = document.getElementById('profGov')?.value || 'Cairo';
+        currentUser.floor = document.getElementById('profFloor')?.value || '0';
+        currentUser.address = (document.getElementById('profAddress')?.value || '').trim();
+        persistCurrentUser();
+        closeAuthModal();
+        showToast(currentLang === 'ar' ? 'تم تحديث بيانات حسابك' : 'Account details saved');
+      });
+    }
+
+    document.getElementById('authSignoutBtn')?.addEventListener('click', signOutUser);
+  }
+
+  function persistCurrentUser() {
+    if (!currentUser) return;
+    const users = lsGet('nalam_users', []).map(u => u.email === currentUser.email ? currentUser : u);
+    lsSet('nalam_users', users);
+    lsSet('nalam_current_user', currentUser);
+    prefillCheckoutFromUser();
+    updateHeaderBadges(false);
+    renderCartDrawer();
+    renderAccountHub();
+  }
+
+  function signOutUser() {
+    currentUser = null;
+    delete memStore['nalam_current_user'];
+    try { localStorage.removeItem('nalam_current_user'); } catch (e) {}
+    closeAuthModal();
+    updateHeaderBadges(false);
+    renderCatalogue();
+    renderCartDrawer();
+    renderWishlistDrawer();
+    renderAccountHub();
+    showToast(currentLang === 'ar' ? 'تم تسجيل الخروج' : 'Signed out');
+  }
+
+  /* ========================================================================
+     5. Account Hub Page / Overlay (Avatar Upload & Full Info Editing)
+     ======================================================================== */
+  function renderAccountHub() {
+    const root = document.getElementById('accountHubRoot');
+    if (!root) return;
+    const guestBox = document.getElementById('accountHubGuest');
+    const memberBox = document.getElementById('accountHubMember');
+
+    if (!currentUser) {
+      if (guestBox) guestBox.style.display = 'flex';
+      if (memberBox) memberBox.style.display = 'none';
+      return;
+    }
+
+    if (guestBox) guestBox.style.display = 'none';
+    if (memberBox) memberBox.style.display = 'grid';
+
+    const full = getFullName(currentUser);
+    const av = document.getElementById('hubAvatarPreview');
+    if (av) {
+      av.innerHTML = currentUser.avatar
+        ? `<img src="${currentUser.avatar}" alt="${full}">`
+        : (full.slice(0, 2).toUpperCase() || 'NL');
+    }
+
+    const setTxt = (id, v) => { const e = document.getElementById(id); if (e) e.textContent = v; };
+    const setVal = (id, v) => { const e = document.getElementById(id); if (e) e.value = v; };
+
+    setTxt('hubDisplayName', full);
+    setTxt('hubDisplayEmail', currentUser.email || '');
+    setTxt('hubStatCart', String(getCart().reduce((s, i) => s + (i.qty || 1), 0)));
+    setTxt('hubStatWish', String(getWishlist().length));
+    const payState = getPaymentState();
+    setTxt('hubStatPay', payState.step >= 4 ? (currentLang === 'ar' ? 'مؤكد' : 'Confirmed') : (currentLang === 'ar' ? `مرحلة ${payState.step}/4` : `Step ${payState.step}/4`));
+
+    setVal('hubFirstName', currentUser.firstName || full.split(' ')[0] || '');
+    setVal('hubLastName', currentUser.lastName || full.split(' ').slice(1).join(' ') || '');
+    setVal('hubPhone', currentUser.phone || '');
+    setVal('hubGov', currentUser.gov || 'Cairo');
+    setVal('hubFloor', String(currentUser.floor ?? '0'));
+    setVal('hubAddress', currentUser.address || '');
+  }
+
+  function initAccountHub() {
+    const fileInput = document.getElementById('hubAvatarInput');
+    if (fileInput) {
+      fileInput.addEventListener('change', () => {
+        if (!currentUser || !fileInput.files || !fileInput.files[0]) return;
+        const file = fileInput.files[0];
+        if (!file.type.startsWith('image/')) return;
+        const reader = new FileReader();
+        reader.onload = ev => {
+          const img = new Image();
+          img.onload = () => {
+            const canvas = document.createElement('canvas');
+            const size = 240;
+            canvas.width = size;
+            canvas.height = size;
+            const ctx = canvas.getContext('2d');
+            const minSide = Math.min(img.width, img.height);
+            const sx = (img.width - minSide) / 2;
+            const sy = (img.height - minSide) / 2;
+            ctx.drawImage(img, sx, sy, minSide, minSide, 0, 0, size, size);
+            currentUser.avatar = canvas.toDataURL('image/jpeg', 0.84);
+            persistCurrentUser();
+            showToast(currentLang === 'ar' ? 'تم تحديث صورتك الشخصية!' : 'Profile photo updated!');
+          };
+          img.src = ev.target.result;
+        };
+        reader.readAsDataURL(file);
+      });
+    }
+
+    document.getElementById('hubRemoveAvatarBtn')?.addEventListener('click', () => {
+      if (!currentUser) return;
+      currentUser.avatar = '';
+      persistCurrentUser();
+      showToast(currentLang === 'ar' ? 'تمت إزالة الصورة الشخصية' : 'Profile photo removed');
+    });
+
+    const hubForm = document.getElementById('hubEditForm');
+    if (hubForm) {
+      hubForm.addEventListener('submit', e => {
+        e.preventDefault();
+        if (!currentUser) return;
+        const fn = (document.getElementById('hubFirstName')?.value || '').trim();
+        const ln = (document.getElementById('hubLastName')?.value || '').trim();
+        if (!isValidNamePart(fn) || !isValidNamePart(ln)) {
+          showToast(t('auth_name_err'));
+          return;
+        }
+        currentUser.firstName = fn;
+        currentUser.lastName = ln;
+        currentUser.name = `${fn} ${ln}`;
+        currentUser.phone = (document.getElementById('hubPhone')?.value || '').trim();
+        currentUser.gov = document.getElementById('hubGov')?.value || 'Cairo';
+        currentUser.floor = document.getElementById('hubFloor')?.value || '0';
+        currentUser.address = (document.getElementById('hubAddress')?.value || '').trim();
+
+        const newPass = document.getElementById('hubNewPass')?.value || '';
+        if (newPass.length >= 4) {
+          currentUser.password = newPass;
+          document.getElementById('hubNewPass').value = '';
+        }
+        persistCurrentUser();
+        showToast(currentLang === 'ar' ? 'تم حفظ جميع تعديلات حسابك!' : 'All account changes saved!');
+      });
+    }
+
+    document.getElementById('hubSignoutBtn')?.addEventListener('click', signOutUser);
+  }
+
+  /* ========================================================================
+     6. Dedicated Payment Hub & Client <-> Admin Follow-Up Chat
+     ======================================================================== */
+  function getPaymentState() {
+    return lsGet('nalam_payment_state', {
+      method: 'InstaPay',
+      step: 1, // 1: Order Placed, 2: Transfer Submitted, 3: Admin Reviewing, 4: Confirmed
+      reference: '',
+      amountEgp: 0,
+      updatedAt: '',
+      messages: [
+        {
+          sender: 'admin',
+          text: 'Welcome to Nalam! Your payment has been verified and your project is assigned to our New Cairo engineering desk. Reply here anytime for measurement scheduling or finish samples.',
+          time: 'System'
+        }
+      ]
+    });
+  }
+
+  function savePaymentState(st) {
+    lsSet('nalam_payment_state', st);
+    renderPaymentHub();
+    renderAccountHub();
+  }
+
+  function renderPaymentHub() {
+    const root = document.getElementById('paymentHubRoot');
+    if (!root) return;
+    const st = getPaymentState();
+
+    /* Toggle InstaPay / Mobile Wallet detail panels */
+    document.querySelectorAll('[data-pay-hub-btn]').forEach(btn => {
+      btn.classList.toggle('active', btn.getAttribute('data-pay-hub-btn') === st.method);
+    });
+    const instaPanel = document.getElementById('payHubInstaPanel');
+    const walletPanel = document.getElementById('payHubWalletPanel');
+    if (instaPanel) instaPanel.style.display = st.method === 'InstaPay' ? 'flex' : 'none';
+    if (walletPanel) walletPanel.style.display = st.method === 'Mobile Wallet' ? 'flex' : 'none';
+
+    /* Progress bar & steps */
+    const fill = document.getElementById('payProgressFill');
+    if (fill) fill.style.width = `${Math.min(100, st.step * 25)}%`;
+
+    document.querySelectorAll('[data-pay-step]').forEach(el => {
+      const n = Number(el.getAttribute('data-pay-step'));
+      el.classList.toggle('done', n < st.step || (st.step === 4 && n === 4));
+      el.classList.toggle('current', n === st.step && st.step < 4);
+    });
+
+    const statusBadge = document.getElementById('payStatusText');
+    if (statusBadge) {
+      const labelsEn = {
+        1: 'Step 1 of 4 — Awaiting Your Transfer',
+        2: 'Step 2 of 4 — Transfer Submitted (Pending Admin Receipt)',
+        3: 'Step 3 of 4 — Admin Verifying Actual Funds Received',
+        4: 'Step 4 of 4 — Payment Confirmed by Admin ✓'
+      };
+      const labelsAr = {
+        1: 'المرحلة 1 من 4 — في انتظار التحويل',
+        2: 'المرحلة 2 من 4 — تم إرسال التحويل (بانتظار مراجعة الإدارة)',
+        3: 'المرحلة 3 من 4 — الإدارة تتحقق من وصول المبلغ الفعلي',
+        4: 'المرحلة 4 من 4 — تم تأكيد الدفع من الإدارة ✓'
+      };
+      statusBadge.textContent = currentLang === 'ar' ? labelsAr[st.step] : labelsEn[st.step];
+    }
+
+    /* Follow-up Messaging Section (Unlocks ONLY when step === 4 Confirmed) */
+    const lockedBox = document.getElementById('payChatLocked');
+    const chatBox = document.getElementById('payChatUnlocked');
+    if (lockedBox) lockedBox.style.display = st.step >= 4 ? 'none' : 'block';
+    if (chatBox) chatBox.style.display = st.step >= 4 ? 'flex' : 'none';
+
+    const msgList = document.getElementById('payChatMessages');
+    if (msgList && st.step >= 4) {
+      msgList.innerHTML = st.messages.map(m => `
+        <div class="chat-bubble ${m.sender === 'admin' ? 'admin' : 'client'}">
+          <div>${m.text.replace(/</g, '&lt;')}</div>
+          <span class="chat-meta">${m.sender === 'admin' ? 'Nalam Admin / Engineer' : (getFullName(currentUser) || 'Client')} • ${m.time}</span>
+        </div>
+      `).join('');
+      msgList.scrollTop = msgList.scrollHeight;
     }
   }
 
-  function openProduct(productId) {
-    var product = PRODUCT_MAP.get(productId);
-    if (!product || !refs.productModalBackdrop) return;
-    closeCart(false);
-    closeWishlist(false);
-    closeAuth(false);
-    closeMobile(false);
-    rememberFocus();
-    state.currentProductId = productId;
-    state.modalQty = 1;
-    state.modalImageIndex = 0;
-    renderModalProduct();
-    refs.productModalBackdrop.classList.add('open');
-    lockBody();
-    var close = $('.modal-close', refs.productModalBackdrop);
-    if (close) window.setTimeout(function () { close.focus({ preventScroll: true }); }, 80);
+  function initPaymentHub() {
+    document.querySelectorAll('[data-pay-hub-btn]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const st = getPaymentState();
+        st.method = btn.getAttribute('data-pay-hub-btn');
+        savePaymentState(st);
+      });
+    });
+
+    document.querySelectorAll('[data-copy-text]').forEach(btn => {
+      btn.addEventListener('click', () => copyToClipboard(btn.getAttribute('data-copy-text')));
+    });
+
+    const submitTransferForm = document.getElementById('payTransferForm');
+    if (submitTransferForm) {
+      submitTransferForm.addEventListener('submit', e => {
+        e.preventDefault();
+        const ref = (document.getElementById('payTransferRef')?.value || '').trim();
+        const amt = Number(document.getElementById('payTransferAmount')?.value || 0);
+        if (!ref) {
+          showToast(currentLang === 'ar' ? 'يرجى إدخال رقم العملية أو المرجع' : 'Please enter your transfer reference number.');
+          return;
+        }
+        const st = getPaymentState();
+        st.reference = ref;
+        st.amountEgp = amt;
+        st.step = Math.max(st.step, 2);
+        st.updatedAt = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        savePaymentState(st);
+        sendToGoogleSheet({
+          type: 'payment_transfer_submitted',
+          timestamp: new Date().toISOString(),
+          method: st.method,
+          reference: ref,
+          amountEgp: amt,
+          user: getFullName(currentUser) || 'Guest'
+        });
+        showToast(currentLang === 'ar' ? 'تم إرسال بيانات التحويل لمراجعة الإدارة!' : 'Transfer submitted for Nalam admin review!');
+      });
+    }
+
+    /* Admin Verification Controls */
+    document.querySelectorAll('[data-admin-set-step]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const step = Number(btn.getAttribute('data-admin-set-step'));
+        const st = getPaymentState();
+        st.step = step;
+        st.updatedAt = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        savePaymentState(st);
+        if (step === 4) {
+          showToast(currentLang === 'ar' ? 'تم تأكيد الدفع! تم فتح محادثة المتابعة.' : 'Payment confirmed by Admin! Follow-up chat unlocked.');
+        }
+      });
+    });
+
+    /* Client <-> Admin Follow-Up Messaging */
+    const chatForm = document.getElementById('payChatForm');
+    if (chatForm) {
+      chatForm.addEventListener('submit', e => {
+        e.preventDefault();
+        const input = document.getElementById('payChatInput');
+        const senderSel = document.getElementById('payChatSender');
+        const txt = (input?.value || '').trim();
+        if (!txt) return;
+        const st = getPaymentState();
+        if (st.step < 4) return;
+        st.messages.push({
+          sender: senderSel ? senderSel.value : 'client',
+          text: txt,
+          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        });
+        if (input) input.value = '';
+        savePaymentState(st);
+      });
+    }
+  }
+
+  /* ========================================================================
+     7. Cart & Wishlist (Flat-Rate 5,000 EGP + 4-Option Floor Engine)
+     ======================================================================== */
+  function addToCart(productId) {
+    const cart = getCart();
+    const existing = cart.find(i => i.id === productId);
+    if (existing) existing.qty += 1;
+    else cart.push({ id: productId, qty: 1 });
+    saveCart(cart, true);
+    renderCartDrawer();
+
+    const p = PRODUCTS.find(x => x.id === productId);
+    if (p) {
+      trackPixel('AddToCart', {
+        content_ids: [p.code],
+        content_name: p.titleEn,
+        content_category: p.category,
+        content_type: 'product',
+        value: p.priceEgp,
+        currency: 'EGP'
+      });
+      const name = currentLang === 'ar' ? p.titleAr : p.titleEn;
+      showToast(currentLang === 'ar' ? `تمت الإضافة للسلة: ${name}` : `Added to cart: ${name}`);
+    }
+  }
+
+  function toggleWishlist(productId) {
+    let wish = getWishlist();
+    const exists = wish.includes(productId);
+    if (exists) wish = wish.filter(id => id !== productId);
+    else wish.push(productId);
+    saveWishlist(wish);
+    renderCatalogue();
+    renderWishlistDrawer();
+    if (activeProduct && activeProduct.id === productId) renderModalContent();
+    showToast(exists
+      ? (currentLang === 'ar' ? 'تمت الإزالة من المفضلة' : 'Removed from wishlist')
+      : (currentLang === 'ar' ? 'تمت الإضافة إلى المفضلة' : 'Saved to wishlist'));
+  }
+
+  function openSideDrawer(which) {
+    closeMobileDrawer();
+    document.getElementById('cartDrawer')?.classList.toggle('open', which === 'cart');
+    document.getElementById('wishlistDrawer')?.classList.toggle('open', which === 'wishlist');
+    document.getElementById('sideDrawerBackdrop')?.classList.add('open');
+    if (which === 'cart') {
+      prefillCheckoutFromUser();
+      renderCartDrawer();
+    } else {
+      renderWishlistDrawer();
+    }
+  }
+
+  function closeSideDrawers() {
+    document.getElementById('sideDrawerBackdrop')?.classList.remove('open');
+    document.getElementById('cartDrawer')?.classList.remove('open');
+    document.getElementById('wishlistDrawer')?.classList.remove('open');
+  }
+
+  /* 4-Option Floor Delivery Calculation:
+     - 0 items => 0 EGP
+     - >=1 item & floor 0/1/2 => Flat 5,000 EGP (Cairo & Giza)
+     - >=1 item & floor === 'higher' => 5,000 EGP base + Higher Floor Fee calculated upon confirmation */
+  function calculateDelivery(itemCount, gov, floorVal) {
+    if (!itemCount || itemCount <= 0) {
+      return { base: 0, isHigher: false, totalKnownDelivery: 0, gov };
+    }
+    const base = CONFIG.baseDeliveryFeeEgp || 5000;
+    const isHigher = String(floorVal) === 'higher';
+    return { base, isHigher, totalKnownDelivery: base, gov };
+  }
+
+  function getSelectedPayMethod() {
+    const checked = document.querySelector('input[name="checkoutPayMethod"]:checked');
+    return checked ? checked.value : 'InstaPay';
+  }
+
+  function syncPaymentCardUI() {
+    const selected = getSelectedPayMethod();
+    document.querySelectorAll('.pay-card-option').forEach(lbl => {
+      const inp = lbl.querySelector('input');
+      lbl.classList.toggle('selected', Boolean(inp && inp.checked));
+    });
+    const instapayBox = document.getElementById('checkoutInstapayBox');
+    if (instapayBox) instapayBox.style.display = selected === 'InstaPay' ? 'flex' : 'none';
+  }
+
+  function renderCartDrawer() {
+    const body = document.getElementById('cartDrawerBody');
+    const formWrap = document.getElementById('cartCheckoutFormWrap');
+    const flatBadge = document.getElementById('cartFlatRateBadge');
+    const emptyNote = document.getElementById('cartEmptyDeliveryNote');
+    const floorRow = document.getElementById('cartFloorRow');
+    const checkoutBtn = document.getElementById('cartCheckoutBtn');
+    const payHubLink = document.getElementById('cartPayHubLink');
+    if (!body) return;
+
+    const cart = getCart();
+    const totalQty = cart.reduce((s, it) => s + (it.qty || 1), 0);
+    const setEl = (id, v) => { const e = document.getElementById(id); if (e) e.textContent = v; };
+
+    if (!cart.length) {
+      body.innerHTML = `<div class="empty-state">${t('cart_empty')}</div>`;
+      if (flatBadge) flatBadge.style.display = 'none';
+      if (emptyNote) { emptyNote.textContent = t('cart_empty_delivery_note'); emptyNote.style.display = 'block'; }
+      if (formWrap) formWrap.style.display = 'none';
+      if (floorRow) floorRow.style.display = 'none';
+      if (checkoutBtn) checkoutBtn.style.display = 'none';
+      if (payHubLink) payHubLink.style.display = 'none';
+
+      setEl('cartSubtotalVal', formatPrice(0));
+      setEl('cartDeliveryLbl', t('delivery_lbl'));
+      setEl('cartDeliveryBaseVal', formatPrice(0));
+      setEl('cartGrandTotalVal', formatPrice(0));
+      return;
+    }
+
+    if (flatBadge) { flatBadge.textContent = t('cart_flat_badge'); flatBadge.style.display = 'block'; }
+    if (emptyNote) emptyNote.style.display = 'none';
+    if (formWrap) formWrap.style.display = 'flex';
+    if (floorRow) floorRow.style.display = 'flex';
+    if (checkoutBtn) checkoutBtn.style.display = 'inline-flex';
+    if (payHubLink) payHubLink.style.display = 'inline-flex';
+
+    let subtotal = 0;
+    body.innerHTML = '';
+
+    cart.forEach(item => {
+      const p = PRODUCTS.find(x => x.id === item.id);
+      if (!p) return;
+      subtotal += p.priceEgp * item.qty;
+      const title = currentLang === 'ar' ? p.titleAr : p.titleEn;
+      const firstImg = p.images[0];
+      const fallback = makePlaceholderSvg(p, currentLang === 'ar' ? firstImg.labelAr : firstImg.labelEn, firstImg.src);
+
+      const row = document.createElement('div');
+      row.className = 'drawer-item';
+      row.innerHTML = `
+        <img src="${firstImg.src}" alt="${title}" loading="lazy">
+        <div>
+          <div class="drawer-item-title">${title}</div>
+          <div class="drawer-item-dims">${p.dimensions}</div>
+          <div class="drawer-item-meta">${formatPrice(p.priceEgp * item.qty)}</div>
+          <div class="qty-row">
+            <div class="qty-controls">
+              <button type="button" class="qty-btn" data-qty-dec="${p.id}" aria-label="Decrease quantity">-</button>
+              <span>${item.qty}</span>
+              <button type="button" class="qty-btn" data-qty-inc="${p.id}" aria-label="Increase quantity">+</button>
+            </div>
+            <button type="button" class="remove-link" data-cart-rem="${p.id}">${t('remove_lbl')}</button>
+          </div>
+        </div>
+      `;
+      const img = row.querySelector('img');
+      img.addEventListener('error', () => { if (!img.dataset.fb) { img.dataset.fb = '1'; img.src = fallback; } });
+      body.appendChild(row);
+    });
+
+    body.querySelectorAll('[data-qty-inc]').forEach(b => {
+      b.addEventListener('click', () => {
+        const c = getCart();
+        const it = c.find(x => x.id === b.getAttribute('data-qty-inc'));
+        if (it) it.qty += 1;
+        saveCart(c, false); renderCartDrawer();
+      });
+    });
+    body.querySelectorAll('[data-qty-dec]').forEach(b => {
+      b.addEventListener('click', () => {
+        let c = getCart();
+        const id = b.getAttribute('data-qty-dec');
+        const it = c.find(x => x.id === id);
+        if (it) { it.qty -= 1; if (it.qty <= 0) c = c.filter(x => x.id !== id); }
+        saveCart(c, false); renderCartDrawer();
+      });
+    });
+    body.querySelectorAll('[data-cart-rem]').forEach(b => {
+      b.addEventListener('click', () => {
+        saveCart(getCart().filter(x => x.id !== b.getAttribute('data-cart-rem')), false);
+        renderCartDrawer();
+      });
+    });
+
+    const gov = document.getElementById('checkoutGov')?.value || 'Cairo';
+    const fl = document.getElementById('checkoutFloor')?.value || '0';
+    const calc = calculateDelivery(totalQty, gov, fl);
+    const grandTotal = subtotal + calc.totalKnownDelivery;
+
+    setEl('cartSubtotalVal', formatPrice(subtotal));
+    setEl('cartDeliveryLbl', t('delivery_base_lbl'));
+    setEl('cartDeliveryBaseVal', formatPrice(calc.base));
+    setEl('cartFloorFeeVal', calc.isHigher ? t('delivery_floor_calc') : t('delivery_floor_included'));
+    setEl('cartGrandTotalVal', calc.isHigher
+      ? `${formatPrice(grandTotal)} + ${currentLang === 'ar' ? 'رسوم الدور' : 'Higher Floor'}`
+      : formatPrice(grandTotal));
+    setEl('checkoutInstapayHandle', CONFIG.instapayHandle || 'nalam@instapay');
+    syncPaymentCardUI();
+  }
+
+  function renderWishlistDrawer() {
+    const body = document.getElementById('wishlistDrawerBody');
+    if (!body) return;
+    const wish = getWishlist();
+    if (!wish.length) {
+      body.innerHTML = `<div class="empty-state">${t('wish_empty')}</div>`;
+      return;
+    }
+    body.innerHTML = '';
+    wish.forEach(id => {
+      const p = PRODUCTS.find(x => x.id === id);
+      if (!p) return;
+      const title = currentLang === 'ar' ? p.titleAr : p.titleEn;
+      const firstImg = p.images[0];
+      const fallback = makePlaceholderSvg(p, currentLang === 'ar' ? firstImg.labelAr : firstImg.labelEn, firstImg.src);
+      const row = document.createElement('div');
+      row.className = 'drawer-item';
+      row.innerHTML = `
+        <img src="${firstImg.src}" alt="${title}" loading="lazy">
+        <div>
+          <div class="drawer-item-title">${title}</div>
+          <div class="drawer-item-dims">${p.dimensions}</div>
+          <div class="drawer-item-meta">${formatPrice(p.priceEgp)}</div>
+          <div class="qty-row">
+            <button type="button" class="btn btn-primary" style="padding:0.32rem 0.72rem;font-size:0.74rem;" data-move-cart="${p.id}">${t('move_to_cart')}</button>
+            <button type="button" class="remove-link" data-wish-rem="${p.id}">${t('remove_lbl')}</button>
+          </div>
+        </div>
+      `;
+      const img = row.querySelector('img');
+      img.addEventListener('error', () => { if (!img.dataset.fb) { img.dataset.fb = '1'; img.src = fallback; } });
+      body.appendChild(row);
+    });
+    body.querySelectorAll('[data-move-cart]').forEach(b => {
+      b.addEventListener('click', () => {
+        const id = b.getAttribute('data-move-cart');
+        addToCart(id);
+        saveWishlist(getWishlist().filter(x => x !== id));
+        renderWishlistDrawer();
+        renderCatalogue();
+      });
+    });
+    body.querySelectorAll('[data-wish-rem]').forEach(b => {
+      b.addEventListener('click', () => toggleWishlist(b.getAttribute('data-wish-rem')));
+    });
+  }
+
+  function initDrawers() {
+    document.querySelectorAll('[data-open-cart]').forEach(b => b.addEventListener('click', () => openSideDrawer('cart')));
+    document.querySelectorAll('[data-open-wishlist]').forEach(b => b.addEventListener('click', () => openSideDrawer('wishlist')));
+    document.getElementById('sideDrawerBackdrop')?.addEventListener('click', closeSideDrawers);
+    document.querySelectorAll('[data-close-side-drawer]').forEach(b => b.addEventListener('click', closeSideDrawers));
+
+    ['checkoutName', 'checkoutPhone', 'checkoutGov', 'checkoutFloor', 'checkoutAddress'].forEach(id => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.addEventListener('input', () => { el.dataset.userTouched = '1'; el.classList.remove('field-error'); });
+      el.addEventListener('change', () => {
+        el.dataset.userTouched = '1';
+        if (id === 'checkoutGov' || id === 'checkoutFloor') renderCartDrawer();
+      });
+    });
+
+    document.querySelectorAll('input[name="checkoutPayMethod"]').forEach(radio => {
+      radio.addEventListener('change', syncPaymentCardUI);
+    });
+
+    document.getElementById('copyCheckoutInstapayBtn')?.addEventListener('click', () => {
+      copyToClipboard(CONFIG.instapayHandle || 'nalam@instapay');
+    });
+
+    document.getElementById('cartCheckoutBtn')?.addEventListener('click', () => {
+      const cart = getCart();
+      if (!cart.length) return;
+
+      const nameEl = document.getElementById('checkoutName');
+      const phoneEl = document.getElementById('checkoutPhone');
+      const gov = document.getElementById('checkoutGov')?.value || 'Cairo';
+      const fl = document.getElementById('checkoutFloor')?.value || '0';
+      const addr = (document.getElementById('checkoutAddress')?.value || '').trim();
+      const errBox = document.getElementById('checkoutErrorMsg');
+
+      const custName = (nameEl?.value || '').trim();
+      const custPhone = (phoneEl?.value || '').trim();
+      const pay = getSelectedPayMethod();
+
+      let hasErr = false;
+      if (!custName) { nameEl?.classList.add('field-error'); hasErr = true; }
+      if (!custPhone || custPhone.replace(/\D/g, '').length < 8) { phoneEl?.classList.add('field-error'); hasErr = true; }
+      if (hasErr) {
+        if (errBox) { errBox.textContent = t('checkout_err_required'); errBox.classList.add('show'); }
+        return;
+      }
+      if (errBox) errBox.classList.remove('show');
+
+      const totalQty = cart.reduce((s, it) => s + (it.qty || 1), 0);
+      const calc = calculateDelivery(totalQty, gov, fl);
+
+      let subtotal = 0;
+      const itemRecords = [];
+      const lines = cart.map(it => {
+        const p = PRODUCTS.find(x => x.id === it.id);
+        if (!p) return '';
+        const lineTotal = p.priceEgp * it.qty;
+        subtotal += lineTotal;
+        const nm = currentLang === 'ar' ? p.titleAr : p.titleEn;
+        itemRecords.push({ id: p.id, code: p.code, title: p.titleEn, dimensions: p.dimensions, qty: it.qty, unitPriceEgp: p.priceEgp, lineTotalEgp: lineTotal });
+        return `• ${nm} (${p.code})\n  ${currentLang === 'ar' ? 'المقاس' : 'Dimensions'}: ${p.dimensions} | ${currentLang === 'ar' ? 'الكمية' : 'Qty'}: ${it.qty} × ${formatPrice(p.priceEgp)} = ${formatPrice(lineTotal)}`;
+      }).filter(Boolean).join('\n');
+
+      const grandTotal = subtotal + calc.totalKnownDelivery;
+
+      trackPixel('InitiateCheckout', {
+        content_ids: itemRecords.map(x => x.code),
+        content_type: 'product',
+        num_items: totalQty,
+        value: grandTotal,
+        currency: 'EGP'
+      });
+
+      sendToGoogleSheet({
+        type: 'whatsapp_order',
+        timestamp: new Date().toISOString(),
+        language: currentLang,
+        customer: { name: custName, phone: custPhone, governorate: gov, floor: floorLabel(fl), address: addr },
+        paymentMethod: pay,
+        items: itemRecords,
+        subtotalEgp: subtotal,
+        deliveryBaseEgp: calc.base,
+        higherFloorToBeCalculated: calc.isHigher,
+        grandTotalEgp: grandTotal
+      });
+
+      const floorNoteEn = calc.isHigher ? 'To be calculated upon confirmation' : 'Included (Up to 2nd Floor)';
+      const floorNoteAr = calc.isHigher ? 'تُحسب عند التأكيد' : 'مشمول (حتى الدور الثاني)';
+
+      const msg = currentLang === 'ar'
+        ? `مرحباً فريق نالام،\nطلب جديد عبر الموقع:\n\n${lines}\n\nملخص التكلفة:\n• إجمالي المنتجات: ${formatPrice(subtotal)}\n• توصيل وتركيب ثابت (${gov} - حتى الدور الثاني): ${formatPrice(calc.base)}\n• الدور: ${floorLabel(fl)} (${floorNoteAr})\n• الإجمالي التقديري: ${formatPrice(grandTotal)}${calc.isHigher ? ' + رسوم الدور المرتفع' : ''}\n\nبيانات العميل:\n• الاسم: ${custName}\n• الهاتف: ${custPhone}\n• المحافظة: ${gov}${addr ? `\n• العنوان: ${addr}` : ''}\n• طريقة الدفع: ${pay}${pay === 'InstaPay' ? `\n• حساب إنستاباي: ${CONFIG.instapayHandle}` : `\n• رقم المحفظة: ${CONFIG.mobileWalletNumber}`}`
+        : `Hello Nalam Team,\nNew Website Order Summary:\n\n${lines}\n\nOrder Breakdown:\n• Items Subtotal: ${formatPrice(subtotal)}\n• Flat-Rate Delivery & Installation (${gov}, up to 2nd floor): ${formatPrice(calc.base)}\n• Floor Level: ${floorLabel(fl)} (${floorNoteEn})\n• Estimated Total: ${formatPrice(grandTotal)}${calc.isHigher ? ' (+ Higher Floor Delivery Fee)' : ''}\n\nCustomer Details:\n• Name: ${custName}\n• Phone: ${custPhone}\n• Governorate: ${gov}${addr ? `\n• Address: ${addr}` : ''}\n• Payment Method: ${pay}${pay === 'InstaPay' ? `\n• InstaPay Handle: ${CONFIG.instapayHandle}` : `\n• Mobile Wallet: ${CONFIG.mobileWalletNumber}`}`;
+
+      window.open(`https://wa.me/${CONFIG.whatsappNumber || '201132284750'}?text=${encodeURIComponent(msg)}`, '_blank', 'noopener,noreferrer');
+    });
+  }
+
+  /* ========================================================================
+     8. 9-Category Sales Catalogue & Product Modal
+     ======================================================================== */
+  function renderFilterTabs() {
+    const bar = document.getElementById('catalogueFilterBar');
+    if (!bar) return;
+    bar.innerHTML = CATEGORIES.map(cat => {
+      const count = cat.id === 'all' ? PRODUCTS.length : PRODUCTS.filter(p => p.category === cat.id).length;
+      const label = currentLang === 'ar' ? cat.ar : cat.en;
+      return `<button type="button" class="filter-tab ${cat.id === activeCategory ? 'active' : ''}" data-cat="${cat.id}" role="tab" aria-selected="${cat.id === activeCategory}">
+        <span>${label}</span><span class="filter-count">(${count})</span>
+      </button>`;
+    }).join('');
+    bar.querySelectorAll('.filter-tab').forEach(btn => {
+      btn.addEventListener('click', () => {
+        activeCategory = btn.getAttribute('data-cat');
+        renderFilterTabs();
+        renderCatalogue();
+      });
+    });
+  }
+
+  function renderCatalogue() {
+    const grid = document.getElementById('catalogueGrid');
+    if (!grid) return;
+    const wishList = getWishlist();
+    const list = activeCategory === 'all' ? PRODUCTS : PRODUCTS.filter(p => p.category === activeCategory);
+    grid.innerHTML = '';
+
+    list.forEach((product, idx) => {
+      const card = document.createElement('article');
+      card.className = 'product-card';
+      card.style.animationDelay = `${Math.min(idx * 55, 360)}ms`;
+      const title = currentLang === 'ar' ? product.titleAr : product.titleEn;
+      const mat = currentLang === 'ar' ? product.materialAr : product.materialEn;
+      const firstImg = product.images[0];
+      const fallbackUrl = makePlaceholderSvg(product, currentLang === 'ar' ? firstImg.labelAr : firstImg.labelEn, firstImg.src);
+      const isSaved = wishList.includes(product.id);
+
+      card.innerHTML = `
+        <div class="product-media" data-open-modal>
+          <img src="${firstImg.src}" alt="${title}" loading="lazy">
+          <span class="product-cat-badge">${getCategoryLabel(product.category)}</span>
+          <button type="button" class="product-wish-fab ${isSaved ? 'saved' : ''}" data-wish-btn aria-label="${t('cat_add_wish')}">&#9829;</button>
+          <span class="product-views-badge">${product.images.length} ${t('cat_angles_suffix')}</span>
+        </div>
+        <div class="product-body">
+          <h3 class="product-title" data-open-modal>${title}</h3>
+          <div class="product-dims">${product.dimensions}</div>
+          <p class="product-spec">${mat}</p>
+          <div class="product-footer">
+            <div class="product-price">
+              <span class="product-price-label">${t('cat_starting')}</span>
+              <span class="product-price-val">${formatPrice(product.priceEgp)}</span>
+            </div>
+            <button type="button" class="btn btn-outline" style="padding:0.48rem 0.88rem;font-size:0.78rem;" data-open-modal>${t('cat_view_btn')}</button>
+          </div>
+          <div class="product-card-actions">
+            <button type="button" class="btn btn-primary" data-add-cart>${t('cat_add_cart')}</button>
+            <button type="button" class="btn btn-outline" data-wish-btn>${isSaved ? '&#9829; ' + t('cat_saved_wish') : '&#9825; ' + t('cat_add_wish')}</button>
+          </div>
+        </div>
+      `;
+      const imgEl = card.querySelector('img');
+      imgEl.addEventListener('error', () => { if (!imgEl.dataset.fb) { imgEl.dataset.fb = '1'; imgEl.src = fallbackUrl; } });
+      card.querySelectorAll('[data-open-modal]').forEach(el => el.addEventListener('click', () => openProductModal(product)));
+      card.querySelectorAll('[data-add-cart]').forEach(el => el.addEventListener('click', e => { e.stopPropagation(); addToCart(product.id); }));
+      card.querySelectorAll('[data-wish-btn]').forEach(el => el.addEventListener('click', e => { e.stopPropagation(); toggleWishlist(product.id); }));
+      grid.appendChild(card);
+    });
+  }
+
+  function openProductModal(product) {
+    activeProduct = product;
+    activeAngleIndex = 0;
+    const backdrop = document.getElementById('productModal');
+    if (!backdrop) return;
     trackPixel('ViewContent', {
-      content_ids: [product.id],
+      content_ids: [product.code],
       content_name: product.titleEn,
+      content_category: product.category,
       content_type: 'product',
       value: product.priceEgp,
       currency: 'EGP'
     });
+    renderModalContent();
+    backdrop.classList.add('open');
+    document.body.style.overflow = 'hidden';
   }
 
-  function closeProduct(restore) {
-    if (!refs.productModalBackdrop) return;
-    refs.productModalBackdrop.classList.remove('open');
-    unlockBody();
-    if (restore !== false) restoreFocus();
+  function closeProductModal() {
+    document.getElementById('productModal')?.classList.remove('open');
+    document.body.style.overflow = '';
+    activeProduct = null;
   }
 
-  function openZoom(src, alt) {
-    if (!refs.zoomModal || !refs.zoomModalImg) return;
-    refs.zoomModalImg.src = src || 'assets/logo.png';
-    refs.zoomModalImg.alt = alt || 'Nalam';
-    refs.zoomModal.classList.add('open');
-    lockBody();
-    if (refs.zoomClose) refs.zoomClose.focus({ preventScroll: true });
-  }
-
-  function closeZoom() {
-    if (!refs.zoomModal) return;
-    refs.zoomModal.classList.remove('open');
-    unlockBody();
-  }
-
-  function closeAllPanels() {
-    closeMobile(false);
-    closeCart(false);
-    closeWishlist(false);
-    closeAuth(false);
-    closeProduct(false);
-    closeZoom();
-  }
-
-  /* ------------------------------------------------------------------------
-     Language application
-     ------------------------------------------------------------------------ */
-
-  var EN_TITLE = '';
-  var AR_TITLE = '';
-  var EN_DESCRIPTION = '';
-  var AR_DESCRIPTION = '';
-
-  function applyLanguage(lang, persist) {
-    state.lang = lang === 'ar' ? 'ar' : 'en';
-    var isArabic = state.lang === 'ar';
-    document.documentElement.lang = isArabic ? 'ar' : 'en';
-    document.documentElement.dir = isArabic ? 'rtl' : 'ltr';
-    document.title = isArabic ? AR_TITLE : EN_TITLE;
-    var meta = document.querySelector('meta[name="description"]');
-    if (meta) {
-      meta.setAttribute('content', isArabic ? AR_DESCRIPTION : EN_DESCRIPTION);
+  function renderModalContent() {
+    if (!activeProduct) return;
+    const p = activeProduct;
+    const title = currentLang === 'ar' ? p.titleAr : p.titleEn;
+    const curImg = p.images[activeAngleIndex] || p.images[0];
+    const curAngleLabel = currentLang === 'ar' ? curImg.labelAr : curImg.labelEn;
+    const mainImg = document.getElementById('modalMainImg');
+    if (mainImg) {
+      delete mainImg.dataset.fb;
+      mainImg.alt = `${title} — ${curAngleLabel}`;
+      mainImg.onerror = () => { if (!mainImg.dataset.fb) { mainImg.dataset.fb = '1'; mainImg.src = makePlaceholderSvg(p, curAngleLabel, curImg.src); } };
+      mainImg.src = curImg.src || DEFAULT_FALLBACK_IMG;
     }
-    $$('[data-i18n]').forEach(function (node) {
-      var key = node.dataset.i18n;
-      var original = node.dataset.i18nEn != null ? node.dataset.i18nEn : node.innerHTML;
-      if (isArabic && AR[key] != null) node.innerHTML = AR[key];
-      else node.innerHTML = original;
-    });
-    var placeholders = PLACEHOLDERS[state.lang] || PLACEHOLDERS.en;
-    Object.keys(placeholders).forEach(function (id) {
-      var field = document.getElementById(id);
-      if (field) field.setAttribute('placeholder', placeholders[id]);
-    });
-    $$('[data-config-hours]').forEach(function (node) {
-      node.textContent = isArabic ? AR.showroom_hours : (CFG.showroomHoursEn || AR.showroom_hours);
-    });
-    $$('[data-lang-toggle]').forEach(function (button) {
-      button.setAttribute('aria-label', isArabic ? 'Switch to English' : 'التبديل إلى العربية');
-    });
-    updateAccountLabel();
-    renderCatalogue();
-    renderCart();
-    renderWishlist();
-    updateBadges(false, false);
-    syncPaymentDetails();
-    updateAuthHeading();
-    $$('.toggle-pass').forEach(function (button) {
-      var field = document.getElementById(button.dataset.togglePassword);
-      var visible = field && field.type === 'text';
-      button.textContent = visible ? (isArabic ? 'إخفاء' : 'Hide') : (isArabic ? 'إظهار' : 'Show');
-    });
-    if (state.currentProductId && refs.productModalBackdrop && refs.productModalBackdrop.classList.contains('open')) {
-      renderModalProduct();
+    const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+    set('modalAngleLabel', curAngleLabel);
+    set('modalCategory', `${getCategoryLabel(p.category)} • ${p.code}`);
+    set('modalTitle', title);
+    set('modalPrice', formatPrice(p.priceEgp));
+    set('modalDimsVal', p.dimensions);
+    set('modalMatVal', currentLang === 'ar' ? p.materialAr : p.materialEn);
+    set('modalHwVal', currentLang === 'ar' ? p.hardwareAr : p.hardwareEn);
+    set('modalFinVal', currentLang === 'ar' ? p.finishAr : p.finishEn);
+    set('modalInstapayHandle', CONFIG.instapayHandle || 'nalam@instapay');
+
+    const thumbsWrap = document.getElementById('modalThumbs');
+    if (thumbsWrap) {
+      thumbsWrap.innerHTML = '';
+      p.images.forEach((imgObj, idx) => {
+        const lbl = currentLang === 'ar' ? imgObj.labelAr : imgObj.labelEn;
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = `modal-thumb ${idx === activeAngleIndex ? 'active' : ''}`;
+        btn.innerHTML = `<img src="${imgObj.src}" alt="${lbl}" loading="lazy"><span>${lbl}</span>`;
+        const tImg = btn.querySelector('img');
+        tImg.addEventListener('error', () => { if (!tImg.dataset.fb) { tImg.dataset.fb = '1'; tImg.src = makePlaceholderSvg(p, lbl, imgObj.src); } });
+        btn.addEventListener('click', () => { activeAngleIndex = idx; renderModalContent(); });
+        thumbsWrap.appendChild(btn);
+      });
     }
-    if (state.pendingCheckout) showAuthBanner(t('auth_banner'));
-    var account = currentAccount();
-    if (account) renderProfile();
-    updateHeroStage(true);
-    updateProcessStage(true);
-    if (persist) saveLanguage();
-  }
-
-  /* ------------------------------------------------------------------------
-     Scroll storytelling
-     ------------------------------------------------------------------------ */
-
-  function clamp(value, min, max) {
-    return Math.max(min, Math.min(max, value));
-  }
-
-  function updateHeroStage(force) {
-    if (!refs.heroTrack || !refs.stageLayers.length) return;
-    var rect = refs.heroTrack.getBoundingClientRect();
-    var distance = Math.max(1, rect.height - window.innerHeight);
-    var progress = clamp(-rect.top / distance, 0, 1);
-    var count = 6;
-    var index = Math.min(count - 1, Math.floor(progress * count));
-    if (index !== state.heroStage || force) {
-      state.heroStage = index;
-      refs.stageLayers.forEach(function (layer) {
-        var stage = parseInt(layer.dataset.stage, 10);
-        layer.classList.toggle('visible', stage <= index);
-      });
-      refs.heroChapterNodes.forEach(function (chapter, chapterIndex) {
-        chapter.classList.toggle('active', chapterIndex === index);
-      });
-      refs.stageDots.forEach(function (dot, dotIndex) {
-        dot.classList.toggle('active', dotIndex === index);
-      });
-      var chapter = refs.heroChapterNodes[index];
-      if (chapter && refs.stageCaptionTitle) {
-        var heading = chapter.querySelector('h2');
-        refs.stageCaptionTitle.textContent = heading ? heading.textContent : '';
-      }
-      if (refs.stageCounter) {
-        refs.stageCounter.textContent = String(index + 1).padStart(2, '0') + ' / ' + String(count).padStart(2, '0');
-      }
+    const wishBtn = document.getElementById('modalWishBtn');
+    if (wishBtn) {
+      const saved = getWishlist().includes(p.id);
+      wishBtn.textContent = saved ? `♥ ${t('cat_saved_wish')}` : `♡ ${t('cat_add_wish')}`;
     }
-    if (refs.stageProgressFill) refs.stageProgressFill.style.width = (progress * 100).toFixed(2) + '%';
   }
 
-  function scrollToStage(index) {
-    if (!refs.heroTrack) return;
-    var trackTop = refs.heroTrack.getBoundingClientRect().top + window.pageYOffset;
-    var distance = Math.max(1, refs.heroTrack.offsetHeight - window.innerHeight);
-    var target = trackTop + distance * clamp((index + 0.5) / 6, 0.02, 0.98);
-    window.scrollTo({ top: target, behavior: REDUCED_MOTION ? 'auto' : 'smooth' });
-  }
+  function initProductModal() {
+    document.getElementById('modalCloseBtn')?.addEventListener('click', closeProductModal);
+    document.getElementById('productModal')?.addEventListener('click', e => { if (e.target.id === 'productModal') closeProductModal(); });
+    document.getElementById('modalCartBtn')?.addEventListener('click', () => { if (activeProduct) addToCart(activeProduct.id); });
+    document.getElementById('modalWishBtn')?.addEventListener('click', () => { if (activeProduct) toggleWishlist(activeProduct.id); });
+    document.getElementById('copyInstapayBtn')?.addEventListener('click', () => copyToClipboard(CONFIG.instapayHandle || 'nalam@instapay'));
 
-  function updateProcessStage(force) {
-    if (!refs.processImageNodes.length || !refs.processStepNodes.length) return;
-    var center = window.innerHeight * 0.48;
-    var closest = 0;
-    var closestDistance = Infinity;
-    refs.processStepNodes.forEach(function (step, index) {
-      var rect = step.getBoundingClientRect();
-      var stepCenter = rect.top + rect.height / 2;
-      var distance = Math.abs(stepCenter - center);
-      if (distance < closestDistance) {
-        closestDistance = distance;
-        closest = index;
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape') {
+        closeProductModal();
+        closeAuthModal();
+        closeTermsModal();
+        closeSideDrawers();
+        closeMobileDrawer();
+        closeZoomModal();
       }
     });
-    if (closest === state.processStage && !force) return;
-    state.processStage = closest;
-    refs.processImageNodes.forEach(function (image, index) {
-      image.classList.toggle('active', index === closest);
-    });
-    var step = refs.processStepNodes[closest];
-    if (step) {
-      step.classList.add('is-active');
-      refs.processStepNodes.forEach(function (other, index) {
-        if (index !== closest) other.classList.remove('is-active');
-      });
-      var heading = step.querySelector('h3');
-      var number = step.querySelector('.step-number');
-      if (refs.processCaptionTitle && heading) refs.processCaptionTitle.textContent = heading.textContent;
-      if (refs.processCaptionSub && number) refs.processCaptionSub.textContent = number.textContent;
-    }
-  }
 
-  function updateActiveNav() {
-    if (!refs.navLinks.length) return;
-    var threshold = 150;
-    var activeId = '';
-    ['showcase', 'stages', 'catalogue', 'materials', 'contact'].forEach(function (id) {
-      var section = document.getElementById(id);
-      if (!section) return;
-      var rect = section.getBoundingClientRect();
-      if (rect.top <= threshold && rect.bottom > threshold) activeId = id;
-    });
-    if (!activeId) return;
-    refs.navLinks.forEach(function (link) {
-      link.classList.toggle('active', link.dataset.nav === activeId);
+    document.getElementById('modalOrderForm')?.addEventListener('submit', e => {
+      e.preventDefault();
+      if (!activeProduct) return;
+      const name = (document.getElementById('orderCustName')?.value || '').trim();
+      const area = (document.getElementById('orderCustArea')?.value || '').trim();
+      const pay = document.getElementById('orderPayMethod')?.value || 'InstaPay';
+      const title = currentLang === 'ar' ? activeProduct.titleAr : activeProduct.titleEn;
+
+      trackPixel('InitiateCheckout', { content_ids: [activeProduct.code], content_name: activeProduct.titleEn, content_type: 'product', num_items: 1, value: activeProduct.priceEgp, currency: 'EGP' });
+      sendToGoogleSheet({ type: 'quick_reserve', timestamp: new Date().toISOString(), language: currentLang, productCode: activeProduct.code, productTitle: activeProduct.titleEn, dimensions: activeProduct.dimensions, priceEgp: activeProduct.priceEgp, customerName: name, deliveryArea: area, paymentMethod: pay });
+
+      const msg = currentLang === 'ar'
+        ? `مرحباً فريق نالام،\nأرغب في حجز/طلب القطعة التالية:\n• الموديل: ${title} (${activeProduct.code})\n• المقاس: ${activeProduct.dimensions}\n• السعر: ${formatPrice(activeProduct.priceEgp)}\n• الاسم: ${name}\n• منطقة التوصيل: ${area}\n• طريقة الدفع: ${pay}`
+        : `Hello Nalam Team,\nI would like to reserve/order the following item:\n• Model: ${title} (${activeProduct.code})\n• Dimensions: ${activeProduct.dimensions}\n• Price: ${formatPrice(activeProduct.priceEgp)}\n• Customer Name: ${name}\n• Delivery Area: ${area}\n• Payment Method: ${pay}`;
+      window.open(`https://wa.me/${CONFIG.whatsappNumber || '201132284750'}?text=${encodeURIComponent(msg)}`, '_blank', 'noopener,noreferrer');
     });
   }
 
-  function handleScroll() {
-    var header = document.querySelector('.site-header');
-    if (header) header.classList.toggle('is-scrolled', window.pageYOffset > 18);
-    if (refs.backToTop) refs.backToTop.classList.toggle('show', window.pageYOffset > 640);
-    updateHeroStage(false);
-    updateProcessStage(false);
-    updateActiveNav();
-  }
-
-  function initReveal() {
-    var nodes = $$('.reveal');
-    if (!nodes.length) return;
-    if (!('IntersectionObserver' in window)) {
-      nodes.forEach(function (node) { node.classList.add('is-visible'); });
-      return;
-    }
-    var observer = new IntersectionObserver(function (entries) {
-      entries.forEach(function (entry) {
-        if (!entry.isIntersecting) return;
-        entry.target.classList.add('is-visible');
-        observer.unobserve(entry.target);
-      });
-    }, { threshold: 0.12, rootMargin: '0px 0px -8% 0px' });
-    nodes.forEach(function (node) { observer.observe(node); });
-  }
-
-  function initScrollEffects() {
-    var ticking = false;
-    function requestUpdate() {
-      if (ticking) return;
-      ticking = true;
-      window.requestAnimationFrame(function () {
-        ticking = false;
-        handleScroll();
-      });
-    }
-    window.addEventListener('scroll', requestUpdate, { passive: true });
-    window.addEventListener('resize', requestUpdate);
-    handleScroll();
-  }
-
-  function smoothScrollTo(hash) {
-    if (!hash || hash === '#') return;
-    if (hash === '#top' || hash === '#main') {
-      window.scrollTo({ top: 0, behavior: REDUCED_MOTION ? 'auto' : 'smooth' });
-      if (hash === '#main') {
-        var main = document.getElementById('main');
-        if (main) {
-          main.setAttribute('tabindex', '-1');
-          main.focus({ preventScroll: true });
-        }
-      }
-      return;
-    }
-    var target = document.getElementById(hash.replace('#', ''));
-    if (!target) return;
-    var header = document.querySelector('.site-header');
-    var offset = header ? header.offsetHeight + 16 : 20;
-    var top = target.getBoundingClientRect().top + window.pageYOffset - offset;
-    window.scrollTo({ top: Math.max(0, top), behavior: REDUCED_MOTION ? 'auto' : 'smooth' });
-    if (window.history && window.history.replaceState) {
-      window.history.replaceState(null, '', hash);
-    }
-  }
-
-  /* ------------------------------------------------------------------------
-     Input helpers
-     ------------------------------------------------------------------------ */
-
-  function copyText(value) {
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      return navigator.clipboard.writeText(value).then(function () {
-        showToast(t('copied'));
-      }).catch(function () {
-        showToast(t('copy_failed'));
-      });
-    }
-    try {
-      var area = document.createElement('textarea');
-      area.value = value;
-      area.setAttribute('readonly', 'readonly');
-      area.style.position = 'fixed';
-      area.style.opacity = '0';
-      document.body.appendChild(area);
-      area.select();
-      document.execCommand('copy');
-      document.body.removeChild(area);
-      showToast(t('copied'));
-    } catch (error) {
-      showToast(t('copy_failed'));
-    }
-    return Promise.resolve();
-  }
-
-  function togglePassword(button) {
-    var field = document.getElementById(button.dataset.togglePassword);
-    if (!field) return;
-    var visible = field.type === 'text';
-    field.type = visible ? 'password' : 'text';
-    button.textContent = visible ? (state.lang === 'ar' ? 'إظهار' : 'Show') : (state.lang === 'ar' ? 'إخفاء' : 'Hide');
-    button.setAttribute('aria-label', visible ? 'Show password' : 'Hide password');
-  }
-
-  function updatePasswordMeter() {
-    if (!refs.signUpPassword || !refs.passwordMeter) return;
-    var value = refs.signUpPassword.value;
-    var score = 0;
-    if (value.length >= 8) score += 1;
-    if (/[A-Za-z]/.test(value) && /\d/.test(value)) score += 1;
-    if (value.length >= 11) score += 1;
-    if (/[^A-Za-z0-9]/.test(value)) score += 1;
-    var width = score <= 1 ? '30%' : (score === 2 ? '58%' : (score === 3 ? '82%' : '100%'));
-    refs.passwordMeter.style.width = value ? width : '0%';
-    refs.passwordMeter.classList.toggle('medium', score >= 2);
-    refs.passwordMeter.classList.toggle('strong', score >= 3);
-  }
-
-  /* ------------------------------------------------------------------------
-     Element references and storm of small interactions
-     ------------------------------------------------------------------------ */
-
-  function captureRefs() {
-    var ids = [
-      'mobileDrawer', 'mobileDrawerBackdrop', 'mobileMenuBtn', 'mobileDrawerCloseBtn',
-      'heroChapters', 'heroStageDots', 'stageCaptionTitle', 'stageCounter', 'stageProgressFill', 'roomStageFrame',
-      'processSteps', 'processCaptionTitle', 'processCaptionSub',
-      'filterBar', 'catalogueGrid',
-      'cartBackdrop', 'cartDrawer', 'cartHeadMeta', 'cartItemsSection', 'cartItemsCount', 'cartItems', 'cartEmptyState',
-      'checkoutForm', 'checkoutName', 'checkoutPhone', 'checkoutGov', 'checkoutFloor', 'checkoutAccountNote',
-      'paymentDetailsBox', 'paymentDetailValue', 'paymentDetailNote',
-      'cartFooter', 'flatRateBadge', 'summaryItems', 'summaryDelivery', 'summaryTotal', 'deliveryPromiseNote',
-      'checkoutSuccess', 'confirmOrderBtn',
-      'wishlistBackdrop', 'wishlistDrawer', 'wishlistHeadMeta', 'wishlistItems', 'wishlistEmptyState',
-      'productModalBackdrop', 'productModal', 'modalMain', 'modalMainImg', 'modalMainLabel', 'modalThumbs',
-      'modalCategory', 'modalProductTitle', 'modalPrice', 'modalQty', 'modalAddToCart', 'modalWishlist',
-      'modalDimensions', 'modalMaterial', 'modalHardware', 'modalFinish', 'modalCode',
-      'authModalBackdrop', 'authForms', 'authTitle', 'authSubtitle', 'signInTab', 'signUpTab',
-      'signInForm', 'signUpForm', 'authBanner', 'signInEmail', 'signInPassword',
-      'signUpName', 'signUpPhone', 'signUpGov', 'signUpEmail', 'signUpPassword', 'signUpConfirm', 'passwordMeter',
-      'profilePanel', 'profileAvatar', 'profileName', 'profileEmail', 'profileOrdersCount', 'profileWishCount',
-      'profileCartCount', 'profileOrdersList', 'signOutBtn',
-      'zoomModal', 'zoomModalImg', 'zoomClose', 'toast', 'backToTop',
-      'contactForm', 'contactName', 'contactPhone', 'contactGov', 'contactInterest', 'contactMessage', 'contactSuccess',
-      'footerYear'
-    ];
-    ids.forEach(function (id) {
-      refs[id] = document.getElementById(id);
+  /* ========================================================================
+     9. Showroom Inquiry Form, Copy Maps Link & Image Zoom
+     ======================================================================== */
+  function populateInquiryCategorySelect() {
+    document.querySelectorAll('[data-inquiry-cat-select]').forEach(sel => {
+      const prev = sel.value;
+      sel.innerHTML = CATEGORIES.filter(c => c.id !== 'all').map(cat => {
+        const label = currentLang === 'ar' ? cat.ar : cat.en;
+        return `<option value="${label}">${label}</option>`;
+      }).join('');
+      if (prev) sel.value = prev;
     });
-    refs.heroTrack = document.getElementById('showcase');
-    refs.stageDots = $$('[data-stage-dot]');
-    refs.stageLayers = $$('.room-layer[data-stage]');
-    refs.heroChapterNodes = $$('.hero-chapter');
-    refs.processImageNodes = $$('.process-image');
-    refs.processStepNodes = $$('.process-step');
-    refs.navLinks = $$('[data-nav]');
-    refs.langToggles = $$('[data-lang-toggle]');
   }
 
-  function handleDocumentClick(event) {
-    var target = event.target;
-    if (!target || !target.closest) return;
-
-    var copyButton = target.closest('[data-copy-target]');
-    if (copyButton) {
-      var source = document.getElementById(copyButton.dataset.copyTarget);
-      if (source) copyText(source.textContent.trim());
-      return;
-    }
-
-    var langButton = target.closest('[data-lang-toggle]');
-    if (langButton) {
-      applyLanguage(state.lang === 'ar' ? 'en' : 'ar', true);
-      return;
-    }
-
-    var filter = target.closest('[data-filter]');
-    if (filter) {
-      setFilter(filter.dataset.filter);
-      return;
-    }
-
-    var cartInc = target.closest('[data-cart-inc]');
-    if (cartInc) {
-      var incEntry = state.cart.find(function (entry) { return entry.id === cartInc.dataset.cartInc; });
-      if (incEntry) setCartQty(incEntry.id, incEntry.qty + 1);
-      return;
-    }
-    var cartDec = target.closest('[data-cart-dec]');
-    if (cartDec) {
-      var decEntry = state.cart.find(function (entry) { return entry.id === cartDec.dataset.cartDec; });
-      if (decEntry) setCartQty(decEntry.id, decEntry.qty - 1);
-      return;
-    }
-    var cartRemove = target.closest('[data-cart-remove]');
-    if (cartRemove) {
-      removeCartItem(cartRemove.dataset.cartRemove);
-      return;
-    }
-
-    var wishAdd = target.closest('[data-wishlist-add]');
-    if (wishAdd) {
-      addToCart(wishAdd.dataset.wishlistAdd, 1);
-      return;
-    }
-    var wishRemove = target.closest('[data-wishlist-remove]');
-    if (wishRemove) {
-      toggleWishlist(wishRemove.dataset.wishlistRemove, null);
-      return;
-    }
-    var wishToggle = target.closest('[data-wishlist-toggle]');
-    if (wishToggle) {
-      toggleWishlist(wishToggle.dataset.wishlistToggle, wishToggle);
-      return;
-    }
-
-    var addButton = target.closest('[data-add-to-cart]');
-    if (addButton) {
-      addToCart(addButton.dataset.addToCart, 1);
-      return;
-    }
-
-    var modalThumb = target.closest('[data-modal-thumb]');
-    if (modalThumb) {
-      var thumbIndex = parseInt(modalThumb.dataset.modalThumb, 10) || 0;
-      state.modalImageIndex = thumbIndex;
-      renderModalProduct();
-      return;
-    }
-
-    var modalQtyButton = target.closest('[data-modal-qty]');
-    if (modalQtyButton) {
-      var delta = parseInt(modalQtyButton.dataset.modalQty, 10) || 0;
-      state.modalQty = Math.max(1, Math.min(MAX_QTY, state.modalQty + delta));
-      if (refs.modalQty) refs.modalQty.textContent = String(state.modalQty);
-      return;
-    }
-
-    if (target.closest('#modalAddToCart') && state.currentProductId) {
-      var quantity = state.modalQty;
-      var modalProduct = state.currentProductId;
-      closeProduct(false);
-      addToCart(modalProduct, quantity);
-      return;
-    }
-
-    if (target.closest('#modalWishlist') && state.currentProductId) {
-      toggleWishlist(state.currentProductId, refs.modalWishlist);
-      return;
-    }
-
-    if (target.closest('#modalMain') && refs.modalMainImg) {
-      openZoom(refs.modalMainImg.src, refs.modalMainImg.alt);
-      return;
-    }
-
-    var zoomSource = target.closest('[data-zoom-src]');
-    if (zoomSource) {
-      openZoom(zoomSource.dataset.zoomSrc, zoomSource.dataset.zoomAlt || '');
-      return;
-    }
-
-    var openProductButton = target.closest('[data-open-product]');
-    if (openProductButton) {
-      openProduct(openProductButton.dataset.openProduct);
-      return;
-    }
-
-    var authTab = target.closest('[data-auth-tab]');
-    if (authTab) {
-      switchAuthTab(authTab.dataset.authTab, true);
-      return;
-    }
-
-    var closed = false;
-    if (target.closest('[data-close-cart]')) {
-      closeCart(false);
-      closed = true;
-    }
-    if (target.closest('[data-close-wishlist]')) {
-      closeWishlist(false);
-      closed = true;
-    }
-    if (target.closest('[data-close-auth]')) {
-      closeAuth(false);
-      closed = true;
-    }
-    if (target.closest('[data-close-product]')) {
-      closeProduct(false);
-      closed = true;
-    }
-    if (target.closest('[data-close-zoom]')) {
-      closeZoom();
-      closed = true;
-    }
-
-    var opensSomething = target.closest('[data-open-cart], [data-open-wishlist], [data-open-auth], [data-scroll-catalogue]');
-    if (closed && !opensSomething) return;
-
-    var openCartButton = target.closest('[data-open-cart]');
-    if (openCartButton) {
-      openCart();
-      return;
-    }
-    var openWishlistButton = target.closest('[data-open-wishlist]');
-    if (openWishlistButton) {
-      openWishlist();
-      return;
-    }
-    var openAuthButton = target.closest('[data-open-auth]');
-    if (openAuthButton) {
-      openAuth('signin');
-      return;
-    }
-
-    var scrollCatalogue = target.closest('[data-scroll-catalogue]');
-    if (scrollCatalogue) {
-      window.setTimeout(function () {
-        if (document.getElementById('catalogue')) smoothScrollTo('#catalogue');
-        else window.location.href = 'index.html#catalogue';
-      }, 220);
-      return;
-    }
-
-    var anchor = target.closest('a[href^="#"]');
-    if (anchor) {
-      var hash = anchor.getAttribute('href');
-      if (!hash || hash === '#') return;
-      if (document.querySelector(hash)) {
-        event.preventDefault();
-        closeMobile(false);
-        closeCart(false);
-        closeWishlist(false);
-        closeAuth(false);
-        smoothScrollTo(hash);
-      }
-    }
-  }
-
-  function handleKeydown(event) {
-    if (event.key === 'Escape') {
-      if (refs.zoomModal && refs.zoomModal.classList.contains('open')) {
-        closeZoom();
-      } else if (refs.productModalBackdrop && refs.productModalBackdrop.classList.contains('open')) {
-        closeProduct();
-      } else if (refs.authModalBackdrop && refs.authModalBackdrop.classList.contains('open')) {
-        closeAuth();
-      } else if (refs.wishlistDrawer && refs.wishlistDrawer.classList.contains('open')) {
-        closeWishlist();
-      } else if (refs.cartDrawer && refs.cartDrawer.classList.contains('open')) {
-        closeCart();
-      } else if (refs.mobileDrawer && refs.mobileDrawer.classList.contains('open')) {
-        closeMobile();
-      }
-      return;
-    }
-    if (event.key === 'Enter' || event.key === ' ') {
-      var card = event.target.closest && event.target.closest('[data-open-product]');
-      if (card && card.getAttribute('role') === 'button') {
-        event.preventDefault();
-        openProduct(card.dataset.openProduct);
-      }
-    }
-  }
-
-  function handleInput(event) {
-    var target = event.target;
-    if (!target) return;
-    if (target.id) clearFieldError(target.id);
-    if (target.name === 'paymentMethod') clearFieldError('paymentMethod');
-    if (target.id === 'signUpPassword') updatePasswordMeter();
-  }
-
-  function handleChange(event) {
-    var target = event.target;
-    if (!target) return;
-    if (target.name === 'paymentMethod') {
-      clearFieldError('paymentMethod');
-      syncPaymentDetails();
-    }
-    if (target.id) clearFieldError(target.id);
-  }
-
-  function bindEvents() {
-    document.addEventListener('click', handleDocumentClick);
-    document.addEventListener('keydown', handleKeydown);
-    document.addEventListener('input', handleInput);
-    document.addEventListener('change', handleChange);
-
-    if (refs.contactForm) refs.contactForm.addEventListener('submit', handleContactSubmit);
-    if (refs.checkoutForm) {
-      refs.checkoutForm.addEventListener('submit', function (event) {
-        event.preventDefault();
-        handleConfirmOrder();
-      });
-    }
-    if (refs.confirmOrderBtn) refs.confirmOrderBtn.addEventListener('click', handleConfirmOrder);
-    if (refs.signInForm) refs.signInForm.addEventListener('submit', handleSignIn);
-    if (refs.signUpForm) refs.signUpForm.addEventListener('submit', handleSignUp);
-    if (refs.signOutBtn) refs.signOutBtn.addEventListener('click', handleSignOut);
-
-    $$('[data-toggle-password]').forEach(function (button) {
-      button.addEventListener('click', function () { togglePassword(button); });
+  function initInquiryAndMaps() {
+    document.querySelectorAll('[data-copy-maps]').forEach(btn => {
+      btn.addEventListener('click', () => copyToClipboard(CONFIG.mapsUrl, currentLang === 'ar' ? 'تم نسخ رابط موقع المعرض!' : 'Showroom Maps link copied!'));
     });
-    if (refs.signUpPassword) refs.signUpPassword.addEventListener('input', updatePasswordMeter);
+    document.querySelectorAll('[data-wa-inquiry-form]').forEach(form => {
+      form.addEventListener('submit', e => {
+        e.preventDefault();
+        const fd = new FormData(form);
+        const name = (fd.get('name') || '').toString().trim();
+        const phone = (fd.get('phone') || '').toString().trim();
+        const category = (fd.get('category') || '').toString().trim();
+        const area = (fd.get('area') || '').toString().trim();
+        const notes = (fd.get('notes') || '').toString().trim();
 
-    if (refs.mobileMenuBtn) refs.mobileMenuBtn.addEventListener('click', openMobile);
-    if (refs.mobileDrawerCloseBtn) refs.mobileDrawerCloseBtn.addEventListener('click', function () { closeMobile(); });
-    if (refs.mobileDrawerBackdrop) refs.mobileDrawerBackdrop.addEventListener('click', function () { closeMobile(); });
+        trackPixel('Lead', { content_name: 'Showroom Consultation', content_category: category });
+        sendToGoogleSheet({ type: 'consultation_inquiry', timestamp: new Date().toISOString(), language: currentLang, name, phone, category, area, notes });
 
-    if (refs.cartBackdrop) refs.cartBackdrop.addEventListener('click', function () { closeCart(); });
-    if (refs.wishlistBackdrop) refs.wishlistBackdrop.addEventListener('click', function () { closeWishlist(); });
-    if (refs.authModalBackdrop) {
-      refs.authModalBackdrop.addEventListener('click', function (event) {
-        if (event.target === refs.authModalBackdrop) closeAuth();
+        const msg = currentLang === 'ar'
+          ? `مرحباً معرض نالام بالقاهرة الجديدة،\nاستفسار جديد عبر الموقع:\n• الاسم: ${name}\n• رقم الهاتف: ${phone}\n• القسم المطلوب: ${category}\n• المنطقة: ${area}\n• التفاصيل: ${notes || 'حجز موعد استشارة بالمعرض'}`
+          : `Hello Nalam New Cairo Showroom,\nNew website inquiry:\n• Name: ${name}\n• Phone: ${phone}\n• Category: ${category}\n• Area / Compound: ${area}\n• Notes: ${notes || 'Requesting showroom consultation'}`;
+        window.open(`https://wa.me/${CONFIG.whatsappNumber || '201132284750'}?text=${encodeURIComponent(msg)}`, '_blank', 'noopener,noreferrer');
       });
-    }
-    if (refs.productModalBackdrop) {
-      refs.productModalBackdrop.addEventListener('click', function (event) {
-        if (event.target === refs.productModalBackdrop) closeProduct();
-      });
-    }
-    if (refs.zoomModal) {
-      refs.zoomModal.addEventListener('click', function (event) {
-        if (event.target === refs.zoomModal) closeZoom();
-      });
-    }
-    if (refs.zoomClose) refs.zoomClose.addEventListener('click', closeZoom);
-    if (refs.backToTop) refs.backToTop.addEventListener('click', function () { smoothScrollTo('#top'); });
-
-    if (refs.heroStageDots) {
-      refs.heroStageDots.addEventListener('click', function (event) {
-        var dot = event.target.closest('[data-stage-dot]');
-        if (dot) scrollToStage(parseInt(dot.dataset.stageDot, 10) || 0);
-      });
-    }
-  }
-
-  function readInitialState() {
-    state.lang = readText(STORE_KEYS.lang, 'en') === 'ar' ? 'ar' : 'en';
-    state.cart = normalizeCart(readJSON(STORE_KEYS.cart, []));
-    state.wishlist = normalizeWishlist(readJSON(STORE_KEYS.wishlist, []));
-    var storedAccounts = readJSON(STORE_KEYS.accounts, []);
-    state.accounts = (Array.isArray(storedAccounts) ? storedAccounts : []).filter(function (account) {
-      return account && account.email && account.passwordHash && account.passwordSalt;
-    }).map(function (account) {
-      return {
-        id: account.id || ('acc_' + randomToken(8)),
-        name: account.name || 'Nalam Customer',
-        email: String(account.email).trim(),
-        phone: account.phone || '',
-        governorate: account.governorate || '',
-        passwordSalt: account.passwordSalt,
-        passwordHash: account.passwordHash,
-        createdAt: account.createdAt || new Date().toISOString(),
-        lastFloor: account.lastFloor != null ? account.lastFloor : null,
-        orders: Array.isArray(account.orders) ? account.orders : []
-      };
     });
-    state.sessionId = readText(STORE_KEYS.session, '');
-    if (!state.accounts.some(function (account) { return account.id === state.sessionId; })) {
-      state.sessionId = '';
-    }
   }
 
-  function init() {
-    readInitialState();
-    captureRefs();
-    EN_TITLE = document.title;
-    var meta = document.querySelector('meta[name="description"]');
-    EN_DESCRIPTION = (document.body.dataset.descriptionEn || (meta ? meta.getAttribute('content') : '')) || '';
-    AR_TITLE = document.body.dataset.titleAr || AR.page_title;
-    AR_DESCRIPTION = document.body.dataset.descriptionAr ||
-      'نالام تصمم وتنفذ مطابخ ودريسينج روم وأثاثاً مخصصاً في القاهرة الجديدة بخامات معتمدة وتركيب احترافي وضمان 5 سنوات. توصيل ثابت 5,000 جنيه في القاهرة والجيزة.';
-    $$('[data-i18n]').forEach(function (node) {
-      node.dataset.i18nEn = node.innerHTML;
-    });
-    var year = String(new Date().getFullYear());
-    if (refs.footerYear) refs.footerYear.textContent = year;
-
-    bindEvents();
-    switchAuthTab('signin', false);
-    applyLanguage(state.lang, false);
-    updateBadges(false, false);
-    updateAccountLabel();
-    initReveal();
-    initScrollEffects();
-    prefillCheckout();
-    updatePasswordMeter();
-    if (currentAccount()) renderProfile();
-    if (state.pendingCheckout) showAuthBanner(t('auth_banner'));
+  function openZoomModal(src, alt) {
+    const zm = document.getElementById('zoomModal');
+    const zi = document.getElementById('zoomModalImg');
+    if (!zm || !zi) return;
+    zi.src = src || DEFAULT_FALLBACK_IMG;
+    zi.alt = alt || 'Nalam Project';
+    zm.classList.add('open');
+  }
+  function closeZoomModal() { document.getElementById('zoomModal')?.classList.remove('open'); }
+  function initZoomTriggers() {
+    document.querySelectorAll('[data-zoomable]').forEach(img => img.addEventListener('click', () => openZoomModal(img.src, img.alt)));
+    document.getElementById('zoomModal')?.addEventListener('click', closeZoomModal);
   }
 
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', init);
-  } else {
-    init();
-  }
+  document.addEventListener('DOMContentLoaded', () => {
+    initHeader();
+    bindLanguageToggles();
+    initKitchenScrollShowcase();
+    initScrollReveal();
+    initAuthModal();
+    initAccountHub();
+    initPaymentHub();
+    initDrawers();
+    initProductModal();
+    initInquiryAndMaps();
+    initZoomTriggers();
+    prefillCheckoutFromUser();
+    applyLanguage();
+  });
 })();
-
-
-
-
-

@@ -1,0 +1,568 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Account Hub — Nalam New Cairo</title>
+  <meta name="description" content="Manage your Nalam profile photo, personal information, delivery floor, and order status.">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Nalam — Kitchen &amp; Dressing Room">
+  <meta property="og:title" content="Account Hub — Nalam New Cairo">
+  <meta property="og:description" content="Upload your avatar, edit your personal and Cairo/Giza delivery details, and track your Nalam orders.">
+  <meta property="og:image" content="assets/room-furnished.jpg">
+  <meta property="og:url" content="https://nalam.eg/account.html">
+  <meta name="twitter:card" content="summary_large_image">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Amiri:wght@400;700&family=Cairo:wght@400;500;600;700&family=Cormorant+Garamond:ital,wght@0,500;0,600;0,700;1,400;1,600&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+  <!-- Meta Pixel Code (Replace YOUR_PIXEL_ID_HERE with your live Meta Pixel ID) -->
+  <script>
+    !function(f,b,e,v,n,t,s)
+    {if(f.fbq)return;n=f.fbq=function(){n.callMethod?
+    n.callMethod.apply(n,arguments):n.queue.push(arguments)};
+    if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
+    n.queue=[];t=b.createElement(e);t.async=!0;
+    t.src=v;s=b.getElementsByTagName(e)[0];
+    s.parentNode.insertBefore(t,s)}(window, document,'script',
+    'https://connect.facebook.net/en_US/fbevents.js');
+    // Replace 'YOUR_PIXEL_ID_HERE' below with your actual 15-16 digit Meta Pixel ID
+    fbq('init', 'YOUR_PIXEL_ID_HERE');
+    fbq('track', 'PageView');
+  </script>
+  <noscript>
+    <img height="1" width="1" style="display:none" alt=""
+         src="https://www.facebook.com/tr?id=YOUR_PIXEL_ID_HERE&amp;ev=PageView&amp;noscript=1">
+  </noscript>
+  <!-- End Meta Pixel Code -->
+</head>
+<body>
+  <!-- Ambient Pebble & Champagne Floating Glow Layer -->
+  <div class="ambient-glow-canvas" aria-hidden="true">
+    <div class="glow-orb glow-orb-1"></div>
+    <div class="glow-orb glow-orb-2"></div>
+    <div class="glow-orb glow-orb-3"></div>
+  </div>
+  <!-- Sticky Pebble-Glass Header -->
+  <header class="site-header" id="top">
+    <div class="container header-inner">
+      <div style="display:flex;align-items:center;gap:0.65rem;">
+        <button type="button" class="menu-btn" id="mobileMenuBtn" aria-label="Open Menu" aria-expanded="false">&#9776;</button>
+        <a href="index.html" class="brand-lockup" aria-label="Nalam Home">
+          <img src="assets/logo.png" alt="Nalam — Kitchen &amp; Dressing Room" class="brand-logo">
+          <span class="brand-divider" aria-hidden="true"></span>
+          <span class="brand-slogan">Your Zone Is Glam.</span>
+        </a>
+      </div>
+
+      <nav aria-label="Primary Navigation">
+        <ul class="nav-links">
+          <li><a href="index.html#showcase" data-i18n="nav_showcase">Showcase</a></li>
+          <li><a href="index.html#catalogue" data-i18n="nav_catalogue">Catalogue</a></li>
+          <li><a href="index.html#materials" data-i18n="nav_materials">Materials &amp; Hardware</a></li>
+          <li><a href="payment.html" class="" data-i18n="nav_payment">Payment &amp; Tracking</a></li>
+          <li><a href="#account-hub" class="active" data-i18n="nav_account">Account Hub</a></li>
+          <li><a href="index.html#contact" class="" data-i18n="nav_contact">Contact Us</a></li>
+        </ul>
+      </nav>
+
+      <div class="header-actions">
+        <button type="button" class="btn-icon" data-open-wishlist aria-label="Wishlist">
+          <span>&#9825;</span>
+          <span class="badge-count" data-wish-badge>0</span>
+        </button>
+        <button type="button" class="btn-icon" data-open-cart aria-label="Shopping Cart">
+          <span>&#128717;</span>
+          <span class="badge-count" data-cart-badge>0</span>
+        </button>
+        <button type="button" class="btn-icon" data-open-auth aria-label="Account">
+          <span data-header-avatar>&#128100;</span>
+          <span class="btn-icon-label" data-account-label>Sign In</span>
+        </button>
+        <button type="button" class="lang-toggle" data-lang-toggle aria-label="Switch Language">
+          <span data-i18n="lang_btn">عربي</span>
+        </button>
+        <a href="https://wa.me/201132284750" target="_blank" rel="noopener noreferrer" class="btn btn-wa header-wa" data-i18n="nav_wa">WhatsApp</a>
+      </div>
+    </div>
+    <div class="page-scroll-bar" id="pageScrollBar"></div>
+  </header>
+
+  <!-- Mobile Drawer -->
+  <div class="mobile-drawer-backdrop" id="mobileDrawerBackdrop"></div>
+  <aside class="mobile-drawer" id="mobileDrawer" aria-label="Mobile Navigation">
+    <div class="mobile-drawer-head">
+      <img src="assets/logo.png" alt="Nalam" style="height:34px;width:auto;">
+      <button type="button" class="drawer-close-btn" id="mobileDrawerCloseBtn" aria-label="Close Menu">&times;</button>
+    </div>
+    <ul>
+      <li><a href="index.html#showcase" data-i18n="nav_showcase">Showcase</a></li>
+      <li><a href="index.html#stages" data-i18n="nav_stages">Our Stages</a></li>
+      <li><a href="index.html#catalogue" data-i18n="nav_catalogue">Catalogue</a></li>
+      <li><a href="index.html#materials" data-i18n="nav_materials">Materials &amp; Hardware</a></li>
+      <li><a href="payment.html" data-i18n="nav_payment">Payment &amp; Tracking</a></li>
+      <li><a href="#account-hub" data-i18n="nav_account">Account Hub</a></li>
+      <li><a href="index.html#contact" data-i18n="nav_contact">Contact Us</a></li>
+    </ul>
+    <button type="button" class="btn btn-outline" style="width:100%;" data-open-auth>
+      <span data-account-label>Sign In</span>
+    </button>
+    <a href="https://wa.me/201132284750" target="_blank" rel="noopener noreferrer" class="btn btn-wa" style="width:100%;" data-i18n="nav_wa">WhatsApp</a>
+  </aside>
+
+  <section class="page-hero">
+    <div class="container">
+      <div class="eyebrow">MEMBER DASHBOARD</div>
+      <h1 class="section-title">My Nalam Account Hub</h1>
+      <p class="section-subtitle" style="max-width:680px;">Customize your profile avatar, update your verified personal details, and keep your Cairo or Giza delivery floor ready for instant checkout.</p>
+    </div>
+  </section>
+
+  <section id="account-hub" class="section-pad">
+    <div class="container" id="accountHubRoot">
+      <div class="section-header">
+        <div class="eyebrow">PERSONAL PROFILE &amp; PREFERENCES</div>
+        <h2 class="section-title">Nalam Account Hub</h2>
+        <p class="section-subtitle">Upload your profile photo, update your delivery floor and address, or manage your saved furniture selections.</p>
+      </div>
+
+      <!-- Guest Prompt -->
+      <div class="hub-card" id="accountHubGuest" style="align-items:center;text-align:center;padding:2.8rem 1.8rem;">
+        <h3 class="serif" style="font-size:1.85rem;">Sign In to Access Your Account Hub</h3>
+        <p style="max-width:480px;color:var(--stone-muted);font-size:0.94rem;">Create a verified Nalam account or sign in to upload your custom avatar, save your Cairo/Giza delivery floor, and sync your cart and payment status.</p>
+        <div style="display:flex;gap:0.75rem;flex-wrap:wrap;justify-content:center;">
+          <button type="button" class="btn btn-primary" data-open-auth>Sign In / Create Account</button>
+        </div>
+      </div>
+
+      <!-- Signed-In Member Hub -->
+      <div class="hub-grid" id="accountHubMember" style="display:none;">
+        <!-- Left: Avatar Upload & Overview Stats -->
+        <div class="hub-card">
+          <div class="avatar-upload-box">
+            <div class="avatar-preview-circle" id="hubAvatarPreview">NL</div>
+            <div style="flex:1;min-width:180px;">
+              <h3 class="serif" id="hubDisplayName" style="font-size:1.55rem;line-height:1.2;">Nalam Member</h3>
+              <p id="hubDisplayEmail" style="font-size:0.82rem;color:var(--stone-muted);margin-bottom:0.65rem;"></p>
+              <div style="display:flex;gap:0.5rem;flex-wrap:wrap;">
+                <label class="btn btn-gold" style="padding:0.48rem 0.95rem;font-size:0.78rem;cursor:pointer;">
+                  Upload Photo
+                  <input type="file" id="hubAvatarInput" accept="image/*" style="display:none;">
+                </label>
+                <button type="button" class="btn btn-outline" id="hubRemoveAvatarBtn" style="padding:0.48rem 0.9rem;font-size:0.78rem;">Remove Photo</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="account-stat-strip">
+            <div class="account-stat-box"><strong id="hubStatCart">0</strong><span>Cart Items</span></div>
+            <div class="account-stat-box"><strong id="hubStatWish">0</strong><span>Wishlist</span></div>
+            <div class="account-stat-box"><strong id="hubStatPay">Step 1/4</strong><span>Payment Status</span></div>
+          </div>
+
+          <div style="display:flex;gap:0.65rem;flex-wrap:wrap;">
+            <a href="payment.html" class="btn btn-primary" style="flex:1;">Payment &amp; Tracking</a>
+            <button type="button" class="btn btn-outline" id="hubSignoutBtn">Sign Out</button>
+          </div>
+        </div>
+
+        <!-- Right: Full Account Edit Form -->
+        <form class="hub-card" id="hubEditForm">
+          <h3 class="serif" style="font-size:1.55rem;">Edit Personal &amp; Delivery Info</h3>
+          <div class="auth-form">
+            <div class="form-group">
+              <label for="hubFirstName" data-i18n="auth_first_name">First Name *</label>
+              <input id="hubFirstName" type="text" required>
+            </div>
+            <div class="form-group">
+              <label for="hubLastName" data-i18n="auth_last_name">Last Name *</label>
+              <input id="hubLastName" type="text" required>
+            </div>
+            <div class="form-group">
+              <label for="hubPhone" data-i18n="auth_phone">Phone / WhatsApp *</label>
+              <input id="hubPhone" type="tel" required dir="ltr">
+            </div>
+            <div class="form-group">
+              <label for="hubGov" data-i18n="auth_gov">Governorate</label>
+              <select id="hubGov">
+                <option value="Cairo" data-i18n="auth_gov_cairo">Cairo Governorate</option>
+                <option value="Giza" data-i18n="auth_gov_giza">Giza Governorate</option>
+                <option value="Other" data-i18n="auth_gov_other">Other</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="hubFloor" data-i18n="auth_floor">Building Floor Level</label>
+              <select id="hubFloor" data-floor-select></select>
+            </div>
+            <div class="form-group">
+              <label for="hubNewPass">New Password (Optional)</label>
+              <input id="hubNewPass" type="password" minlength="4" placeholder="Leave blank to keep current">
+            </div>
+            <div class="form-group full">
+              <label for="hubAddress" data-i18n="auth_address">Delivery Area / Street Address</label>
+              <input id="hubAddress" type="text" required>
+            </div>
+            <div class="form-group full">
+              <button type="submit" class="btn btn-gold" style="width:100%;">Save All Account Changes</button>
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+  </section>
+  <!-- Global Footer -->
+  <footer class="site-footer">
+    <div class="container">
+      <div class="footer-grid">
+        <div>
+          <img src="assets/logo-light.png" alt="Nalam — Kitchen &amp; Dressing Room" class="footer-logo" loading="lazy">
+          <div class="footer-slogan">Your Zone Is Glam.</div>
+          <p class="footer-desc" data-i18n="footer_desc">Bespoke luxury kitchens, dressing rooms, and architectural cabinetry crafted in New Cairo with certified materials and 5-year warranty.</p>
+        </div>
+
+        <div class="footer-col">
+          <h4 data-i18n="footer_nav_title">Explore</h4>
+          <ul class="footer-links">
+            <li><a href="index.html#showcase" data-i18n="nav_showcase">Showcase</a></li>
+            <li><a href="index.html#catalogue" data-i18n="nav_catalogue">Catalogue</a></li>
+            <li><a href="index.html#materials" data-i18n="nav_materials">Materials &amp; Hardware</a></li>
+            <li><a href="payment.html" data-i18n="nav_payment">Payment &amp; Tracking</a></li>
+            <li><a href="account.html" data-i18n="nav_account">Account Hub</a></li>
+            <li><a href="index.html#contact" data-i18n="footer_contact_page">Contact Us</a></li>
+          </ul>
+        </div>
+
+        <div class="footer-col">
+          <h4 data-i18n="footer_contact_title">Showroom &amp; Direct</h4>
+          <ul class="footer-links">
+            <li><a href="tel:+201132284750" dir="ltr">+20 11 32284750</a></li>
+            <li><a href="https://wa.me/201132284750" target="_blank" rel="noopener noreferrer" data-i18n="btn_wa_direct">Chat on WhatsApp</a></li>
+            <li><a href="https://maps.app.goo.gl/vt4eZUMmj4ZkwLQM6" target="_blank" rel="noopener noreferrer" data-i18n="btn_maps">Open in Google Maps</a></li>
+            <li><a href="https://www.instagram.com/nalam.kitchen.dressingroom/" target="_blank" rel="noopener noreferrer">@nalam.kitchen.dressingroom</a></li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="footer-bottom">
+        <span>© 2026 Nalam. All Rights Reserved.</span>
+        <span style="font-family:var(--font-serif);font-style:italic;color:var(--glow-light);">Your Zone Is Glam.</span>
+      </div>
+    </div>
+  </footer>
+  <!-- Professional Split Auth Modal (Clean Photo Left — Zero Stretched Logo — Mobile Scrollable) -->
+  <div class="modal-backdrop" id="authModal" role="dialog" aria-modal="true" aria-label="Nalam Account">
+    <div class="auth-panel auth-split">
+      <button type="button" class="modal-close" id="authCloseBtn" aria-label="Close">&times;</button>
+
+      <!-- Left Architectural Photo (No Logo Overlay) -->
+      <div class="auth-photo-col">
+        <img src="assets/room-furnished.jpg" alt="Nalam Bespoke Luxury Kitchen" loading="lazy">
+        <div class="auth-photo-caption">
+          <strong>Your Zone Is Glam.</strong>
+          <span>New Cairo Showroom • Daily 11:00 AM – 8:00 PM</span>
+        </div>
+      </div>
+
+      <!-- Right Scrollable Auth Form Column -->
+      <div class="auth-body-col">
+        <div class="auth-header">
+          <h3 data-i18n="auth_welcome">Welcome to Nalam</h3>
+          <div class="auth-perks">
+            <span class="auth-perk-pill" data-i18n="auth_perk_1">Saved Cart &amp; Wishlist</span>
+            <span class="auth-perk-pill" data-i18n="auth_perk_2">Payment &amp; Engineer Chat</span>
+            <span class="auth-perk-pill" data-i18n="auth_perk_3">Custom Avatar &amp; Profile</span>
+          </div>
+        </div>
+
+        <div class="auth-banner" id="authBanner"></div>
+        <div class="auth-error-msg" id="authErrorMsg" role="alert"></div>
+
+        <div class="auth-tabs" id="authTabsWrap">
+          <button type="button" class="auth-tab active" data-auth-tab="signin" data-i18n="auth_signin_tab">Sign In</button>
+          <button type="button" class="auth-tab" data-auth-tab="signup" data-i18n="auth_signup_tab">Create Account</button>
+        </div>
+
+        <!-- Sign In Form -->
+        <form id="authSigninForm" class="auth-form">
+          <div class="form-group full">
+            <label for="siEmail" data-i18n="auth_email">Email Address *</label>
+            <input id="siEmail" type="email" required dir="ltr" autocomplete="email" placeholder="name@example.com">
+          </div>
+          <div class="form-group full">
+            <label for="siPass" data-i18n="auth_password">Password</label>
+            <div class="pass-input-wrap">
+              <input id="siPass" type="password" required minlength="4" autocomplete="current-password" placeholder="••••••">
+              <button type="button" class="pass-toggle-btn" data-pass-toggle="siPass" data-i18n="auth_show">Show</button>
+            </div>
+          </div>
+          <div class="form-group full auth-helper-row">
+            <a href="tel:+201132284750" dir="ltr" style="font-size:0.76rem;color:var(--stone-muted);">+20 11 32284750</a>
+            <button type="button" class="auth-link-btn" id="authForgotBtn" data-i18n="auth_forgot">Forgot password?</button>
+          </div>
+          <div class="form-group full">
+            <button type="submit" class="btn btn-primary" style="width:100%;" data-i18n="auth_signin_btn">Sign In to Nalam</button>
+          </div>
+        </form>
+
+        <!-- Create Account Form (First & Last Name Letters-Only, Email Verification, Other Gov, 4 Floors, Required Terms) -->
+        <form id="authSignupForm" class="auth-form" style="display:none;">
+          <div class="form-group">
+            <label for="suFirstName" data-i18n="auth_first_name">First Name *</label>
+            <input id="suFirstName" type="text" required autocomplete="given-name" placeholder="Ahmed">
+          </div>
+          <div class="form-group">
+            <label for="suLastName" data-i18n="auth_last_name">Last Name *</label>
+            <input id="suLastName" type="text" required autocomplete="family-name" placeholder="Hassan">
+          </div>
+          <div class="form-group full">
+            <label for="suEmail" data-i18n="auth_email">Email Address *</label>
+            <div class="email-verify-row">
+              <input id="suEmail" type="email" required dir="ltr" autocomplete="email" placeholder="name@example.com">
+              <button type="button" class="email-verify-btn" id="suSendVerifyBtn" data-i18n="auth_verify_btn">Verify Email</button>
+            </div>
+            <div class="verify-code-box" id="suVerifyBox">
+              <span class="verify-code-hint" id="suVerifyHint"></span>
+              <div class="email-verify-row">
+                <input id="suVerifyCode" type="text" inputmode="numeric" maxlength="6" dir="ltr" data-i18n-placeholder="auth_verify_code_ph" placeholder="Enter 6-digit code">
+                <button type="button" class="email-verify-btn" id="suConfirmVerifyBtn" data-i18n="auth_verify_confirm">Confirm Code</button>
+              </div>
+            </div>
+          </div>
+          <div class="form-group">
+            <label for="suPhone" data-i18n="auth_phone">Phone / WhatsApp *</label>
+            <input id="suPhone" type="tel" required dir="ltr" autocomplete="tel" placeholder="01X XXXX XXXX">
+          </div>
+          <div class="form-group">
+            <label for="suPass" data-i18n="auth_password">Password</label>
+            <div class="pass-input-wrap">
+              <input id="suPass" type="password" required minlength="4" autocomplete="new-password" placeholder="••••••">
+              <button type="button" class="pass-toggle-btn" data-pass-toggle="suPass" data-i18n="auth_show">Show</button>
+            </div>
+            <div class="pass-strength-track"><div class="pass-strength-fill" id="suPassStrength"></div></div>
+          </div>
+          <div class="form-group">
+            <label for="suGov" data-i18n="auth_gov">Governorate</label>
+            <select id="suGov">
+              <option value="Cairo" data-i18n="auth_gov_cairo">Cairo Governorate</option>
+              <option value="Giza" data-i18n="auth_gov_giza">Giza Governorate</option>
+              <option value="Other" data-i18n="auth_gov_other">Other</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="suFloor" data-i18n="auth_floor">Building Floor Level</label>
+            <select id="suFloor" data-floor-select></select>
+          </div>
+          <div class="form-group full">
+            <label for="suAddress" data-i18n="auth_address">Delivery Area / Street Address</label>
+            <input id="suAddress" type="text" required autocomplete="street-address">
+          </div>
+          <div class="form-group full">
+            <label class="terms-check-row">
+              <input type="checkbox" id="suTermsCheck" required>
+              <span><span data-i18n="auth_terms_prefix">I agree to Nalam’s </span><button type="button" class="terms-link-btn" data-open-terms data-i18n="auth_terms_link">Terms &amp; Services</button></span>
+            </label>
+          </div>
+          <div class="form-group full">
+            <button type="submit" class="btn btn-gold" style="width:100%;" data-i18n="auth_signup_btn">Create My Nalam Account</button>
+          </div>
+        </form>
+
+        <!-- Signed-In Quick Profile Form -->
+        <form id="authProfileForm" class="auth-form" style="display:none;">
+          <div class="profile-hero-card">
+            <div class="profile-avatar" id="profAvatar">NL</div>
+            <div class="profile-meta">
+              <h3 data-i18n="auth_profile_title">My Nalam Account</h3>
+              <p id="profEmailLabel"></p>
+            </div>
+          </div>
+          <div class="form-group">
+            <label for="profFirstName" data-i18n="auth_first_name">First Name *</label>
+            <input id="profFirstName" type="text" required>
+          </div>
+          <div class="form-group">
+            <label for="profLastName" data-i18n="auth_last_name">Last Name *</label>
+            <input id="profLastName" type="text" required>
+          </div>
+          <div class="form-group">
+            <label for="profPhone" data-i18n="auth_phone">Phone / WhatsApp *</label>
+            <input id="profPhone" type="tel" required dir="ltr">
+          </div>
+          <div class="form-group">
+            <label for="profGov" data-i18n="auth_gov">Governorate</label>
+            <select id="profGov">
+              <option value="Cairo" data-i18n="auth_gov_cairo">Cairo Governorate</option>
+              <option value="Giza" data-i18n="auth_gov_giza">Giza Governorate</option>
+              <option value="Other" data-i18n="auth_gov_other">Other</option>
+            </select>
+          </div>
+          <div class="form-group full">
+            <label for="profFloor" data-i18n="auth_floor">Building Floor Level</label>
+            <select id="profFloor" data-floor-select></select>
+          </div>
+          <div class="form-group full">
+            <label for="profAddress" data-i18n="auth_address">Delivery Area / Street Address</label>
+            <input id="profAddress" type="text" required>
+          </div>
+          <div class="form-group full" style="display:flex;gap:0.55rem;flex-wrap:wrap;">
+            <button type="submit" class="btn btn-primary" style="flex:1;" data-i18n="auth_save_profile">Save Account Details</button>
+            <a href="account.html" class="btn btn-gold" style="flex:1;" data-i18n="auth_open_hub">Open Full Account Hub</a>
+          </div>
+          <div class="form-group full">
+            <button type="button" class="btn btn-outline" id="authSignoutBtn" style="width:100%;" data-i18n="auth_signout_btn">Sign Out</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Terms & Services Modal -->
+  <div class="modal-backdrop" id="termsModal" role="dialog" aria-modal="true" aria-label="Nalam Terms and Services">
+    <div class="terms-panel">
+      <button type="button" class="modal-close" id="termsCloseBtn" aria-label="Close">&times;</button>
+      <div class="eyebrow">NALAM ONLINE STORE POLICIES</div>
+      <h2 class="section-title" style="font-size:1.95rem;margin-bottom:0.35rem;">Terms &amp; Services</h2>
+      <p style="font-size:0.86rem;color:var(--stone-muted);">Please review Nalam’s online ordering, pricing, and warranty terms before creating your account.</p>
+
+      <div class="terms-list">
+        <div class="terms-item">
+          <h4>1. Custom Orders &amp; Specifications</h4>
+          <p>All Nalam kitchens, dressing rooms, and bespoke furniture units are crafted to approved dimensions, materials, and finishes. Final site measurements are confirmed by Nalam engineers prior to factory production.</p>
+        </div>
+        <div class="terms-item">
+          <h4>2. Pricing, Payments &amp; Verification</h4>
+          <p>Orders placed via InstaPay or Mobile Wallet are confirmed once Nalam’s finance team verifies actual receipt of funds. Flat-rate 5,000 EGP delivery &amp; installation covers Cairo &amp; Giza up to the 2nd floor; higher floors are calculated upon confirmation.</p>
+        </div>
+        <div class="terms-item highlight">
+          <h4>3. Technical Errors, Pricing Glitches &amp; System Misuse</h4>
+          <p>Nalam reserves the right to cancel, refuse, or correct any order placed due to typographical errors, pricing inaccuracies, software bugs, or unintended technical malfunctions on the website. The company assumes no responsibility or liability for orders resulting from the exploitation or abuse of website bugs, glitches, or unauthorized system errors.</p>
+        </div>
+        <div class="terms-item">
+          <h4>4. 5-Year Warranty &amp; After-Sales Support</h4>
+          <p>Eligible Nalam cabinetry and motion hardware (Turkish SAMET hinges &amp; Italian FGV runners) are covered by our 5-year structural and hardware warranty against manufacturing defects, with maintenance available on request.</p>
+        </div>
+        <div class="terms-item">
+          <h4>5. Account Security &amp; Privacy</h4>
+          <p>You are responsible for providing accurate personal and delivery details. Customer contact and order information is used solely for quotation, delivery coordination, and after-sales follow-up.</p>
+        </div>
+      </div>
+
+      <div style="display:flex;gap:0.65rem;margin-top:1.2rem;justify-content:flex-end;">
+        <button type="button" class="btn btn-gold" id="termsAcceptBtn">I Understand &amp; Agree</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Slide-Over Professional Checkout Cart & Wishlist Drawers -->
+  <div class="side-drawer-backdrop" id="sideDrawerBackdrop"></div>
+
+  <aside class="side-drawer" id="cartDrawer" aria-label="Shopping Cart">
+    <div class="side-drawer-head">
+      <h3 data-i18n="cart_title">Your Shopping Cart</h3>
+      <button type="button" class="drawer-close-btn" data-close-side-drawer aria-label="Close">&times;</button>
+    </div>
+    <div class="checkout-trust-bar" data-i18n="cart_trust">5-Year Warranty • Flat-Rate Cairo &amp; Giza Delivery • Direct WhatsApp Confirmation</div>
+
+    <div class="side-drawer-scroll">
+      <div class="side-drawer-body" id="cartDrawerBody"></div>
+
+      <div class="side-drawer-foot" id="cartDrawerFoot">
+        <div class="flat-rate-badge" id="cartFlatRateBadge" style="display:none;"></div>
+        <div class="delivery-empty-note" id="cartEmptyDeliveryNote" style="display:none;"></div>
+
+        <!-- Cleanly Contained Customer, Delivery & Payment Cards -->
+        <div id="cartCheckoutFormWrap" style="display:none;flex-direction:column;gap:0.75rem;">
+          <div class="checkout-card-box">
+            <div class="checkout-section-title" data-i18n="checkout_details_title">Customer &amp; Delivery Details</div>
+            <div class="checkout-form-grid">
+              <div class="checkout-field">
+                <label for="checkoutName" data-i18n="checkout_name_lbl">Customer Name *</label>
+                <input id="checkoutName" type="text" required data-i18n-placeholder="checkout_name_ph" placeholder="Full Name">
+              </div>
+              <div class="checkout-field">
+                <label for="checkoutPhone" data-i18n="checkout_phone_lbl">Phone / WhatsApp *</label>
+                <input id="checkoutPhone" type="tel" required dir="ltr" data-i18n-placeholder="checkout_phone_ph" placeholder="01X XXXX XXXX">
+              </div>
+              <div class="checkout-field">
+                <label for="checkoutGov" data-i18n="checkout_gov_lbl">Governorate *</label>
+                <select id="checkoutGov" required>
+                  <option value="Cairo" data-i18n="auth_gov_cairo">Cairo Governorate</option>
+                  <option value="Giza" data-i18n="auth_gov_giza">Giza Governorate</option>
+                  <option value="Other" data-i18n="auth_gov_other">Other</option>
+                </select>
+              </div>
+              <div class="checkout-field">
+                <label for="checkoutFloor" data-i18n="checkout_floor_lbl">Floor Number *</label>
+                <select id="checkoutFloor" data-floor-select required></select>
+              </div>
+              <div class="checkout-field full">
+                <label for="checkoutAddress" data-i18n="checkout_area_lbl">Compound / Street Address (Optional)</label>
+                <input id="checkoutAddress" type="text" data-i18n-placeholder="checkout_area_ph" placeholder="e.g. Fifth Settlement, Madinaty, Sheikh Zayed">
+              </div>
+            </div>
+          </div>
+
+          <div class="checkout-card-box">
+            <div class="checkout-section-title" data-i18n="checkout_pay_title">Payment Method *</div>
+            <div class="pay-method-grid">
+              <label class="pay-card-option selected">
+                <input type="radio" name="checkoutPayMethod" value="InstaPay" checked>
+                <strong data-i18n="pay_instapay_title">InstaPay</strong>
+                <span data-i18n="pay_instapay_sub">Instant Bank Transfer</span>
+              </label>
+              <label class="pay-card-option">
+                <input type="radio" name="checkoutPayMethod" value="Mobile Wallet">
+                <strong data-i18n="pay_wallet_title">Mobile Wallet</strong>
+                <span data-i18n="pay_wallet_sub">Vodafone / Orange / Etisalat</span>
+              </label>
+            </div>
+            <div class="instapay-pill" id="checkoutInstapayBox">
+              <span><strong data-i18n="modal_instapay_lbl">InstaPay Address:</strong> <code id="checkoutInstapayHandle">nalam@instapay</code></span>
+              <button type="button" class="copy-btn" id="copyCheckoutInstapayBtn" data-i18n="modal_copy">Copy</button>
+            </div>
+          </div>
+
+          <div class="checkout-error-msg" id="checkoutErrorMsg" role="alert"></div>
+        </div>
+
+        <div class="order-summary-card">
+          <div class="summary-row">
+            <span data-i18n="subtotal_lbl">Items Subtotal</span>
+            <strong id="cartSubtotalVal">0 EGP</strong>
+          </div>
+          <div class="summary-row">
+            <span id="cartDeliveryLbl" data-i18n="delivery_lbl">Delivery</span>
+            <strong id="cartDeliveryBaseVal">0 EGP</strong>
+          </div>
+          <div class="summary-row" id="cartFloorRow" style="display:none;">
+            <span data-i18n="delivery_floor_lbl">Higher Floor Delivery Fee</span>
+            <strong id="cartFloorFeeVal">Included (Up to 2nd Floor)</strong>
+          </div>
+          <div class="summary-row total">
+            <span data-i18n="grand_total_lbl">Estimated Total</span>
+            <span id="cartGrandTotalVal">0 EGP</span>
+          </div>
+        </div>
+
+        <button type="button" class="btn btn-wa" id="cartCheckoutBtn" style="width:100%;display:none;" data-i18n="checkout_btn">Confirm Order &amp; Send via WhatsApp</button>
+        <a href="payment.html" class="btn btn-outline" id="cartPayHubLink" style="width:100%;display:none;" data-i18n="checkout_open_pay_hub">Open Payment &amp; Tracking Page</a>
+      </div>
+    </div>
+  </aside>
+
+  <aside class="side-drawer" id="wishlistDrawer" aria-label="Wishlist">
+    <div class="side-drawer-head">
+      <h3 data-i18n="wish_title">Your Wishlist</h3>
+      <button type="button" class="drawer-close-btn" data-close-side-drawer aria-label="Close">&times;</button>
+    </div>
+    <div class="side-drawer-scroll">
+      <div class="side-drawer-body" id="wishlistDrawerBody"></div>
+    </div>
+  </aside>
+
+  <!-- Toast Notification -->
+  <div class="toast" id="nalamToast" role="status" aria-live="polite"></div>
+  <script src="js/products.js"></script>
+  <script src="js/main.js"></script>
+</body>
+</html>
